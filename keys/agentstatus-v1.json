@@ -5,6 +5,6 @@
   "public_key": "SQ2V6o4BTEOzNoaW6C+jQLPs21bbdRLb98sgwjb6C0o=",
   "emitter": "agentstatus",
   "issued_by": "Carmel Labs, Inc. / AgentStatus",
-  "verify_api": "https://api.agentstatus.dev/api/rora/public/toa/verify",
+  "verify_api": "https://api.rora.carmel.so/api/rora/public/toa/verify",
   "notes": "Public key only. Never distribute the corresponding private key."
 }

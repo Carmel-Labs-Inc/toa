@@ -36,12 +36,12 @@ Other emitters may use this schema with their own keys. Verifiers should pin `re
 ## How AgentStatus emits today
 
 ```http
-GET /api/rora/runs/{decision_id}/toa?agent_id={uuid}
+GET https://api.rora.carmel.so/api/rora/runs/{decision_id}/toa?agent_id={uuid}
 Authorization: Bearer <jwt>
 ```
 
 ```http
-POST /api/rora/public/toa/verify
+POST https://api.rora.carmel.so/api/rora/public/toa/verify
 { "document": { … } }
 ```
 
