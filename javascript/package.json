@@ -1,0 +1,19 @@
+{
+  "name": "toa-verify",
+  "version": "0.1.0",
+  "description": "Verify Tool Outcome Attestation (toa/0.1) documents",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "toa-verify": "./src/cli.js"
+  },
+  "exports": {
+    ".": "./src/verify.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src"
+  ]
+}

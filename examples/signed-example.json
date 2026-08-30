@@ -1,0 +1,35 @@
+{
+  "spec": "toa/0.1",
+  "toa_id": "toa_69d7489656a24fd92139",
+  "tool": {
+    "name": "get_weather",
+    "server_id": "00000000-0000-0000-0000-000000000001",
+    "catalog_hash": null
+  },
+  "run": {
+    "decision_id": "example-decision",
+    "agent_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "observed_at": "2026-08-29T12:00:00Z",
+  "layers": {
+    "reach": "pass",
+    "invoke": "pass",
+    "functional": "pass",
+    "shape": "n/a",
+    "openapi_fidelity": "n/a",
+    "compositional": "n/a"
+  },
+  "outcome_grade": "substance",
+  "business_outcome_ok": false,
+  "reasons": [
+    "example:signed fixture for offline verify demos"
+  ],
+  "emitter": {
+    "name": "agentstatus",
+    "version": "0.1.0",
+    "key_id": "v1"
+  },
+  "payload_hash": "sha256:10b7e9b389d08c5648a8e6c09810c77a353f3b71bffd209b851fb4be9596847d",
+  "signature": "cPyRnsO+wuF+5FWzL9OQDPJbrmTQs1Gq9uK3BnJ/GQGLvTprUYxvQt5nmVdrepUKMbLoauLVAentpviptX2vCA==",
+  "public_key_id": "v1"
+}

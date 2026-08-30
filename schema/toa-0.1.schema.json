@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentstatus.dev/schemas/toa/0.1.json",
+  "title": "Tool Outcome Attestation",
+  "description": "Signed evidence that an MCP tool probe produced graded layer outcomes (toa/0.1). Not a wire protocol.",
+  "type": "object",
+  "required": [
+    "spec",
+    "toa_id",
+    "tool",
+    "run",
+    "observed_at",
+    "layers",
+    "emitter"
+  ],
+  "properties": {
+    "spec": { "const": "toa/0.1" },
+    "toa_id": {
+      "type": "string",
+      "pattern": "^toa_[a-f0-9]{20}$"
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "server_id"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "server_id": { "type": "string", "minLength": 1 },
+        "catalog_hash": { "type": ["string", "null"] }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["decision_id", "agent_id"],
+      "properties": {
+        "decision_id": { "type": "string" },
+        "agent_id": { "type": "string" }
+      }
+    },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "layers": {
+      "type": "object",
+      "required": [
+        "reach",
+        "invoke",
+        "functional",
+        "shape",
+        "openapi_fidelity",
+        "compositional"
+      ],
+      "properties": {
+        "reach": { "enum": ["pass", "fail", "n/a"] },
+        "invoke": { "enum": ["pass", "fail", "n/a"] },
+        "functional": { "enum": ["pass", "fail", "n/a"] },
+        "shape": { "enum": ["pass", "fail", "warn", "n/a"] },
+        "openapi_fidelity": { "enum": ["pass", "fail", "warn", "n/a"] },
+        "compositional": { "enum": ["pass", "fail", "n/a"] }
+      }
+    },
+    "outcome_grade": {
+      "type": ["string", "null"],
+      "description": "operator | schema | substance | soft | none | …"
+    },
+    "business_outcome_ok": { "type": ["boolean", "null"] },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 12
+    },
+    "emitter": {
+      "type": "object",
+      "required": ["name", "version", "key_id"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Who graded and signed. AgentStatus uses \"agentstatus\"."
+        },
+        "version": { "type": "string" },
+        "key_id": { "type": "string" }
+      }
+    },
+    "payload_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "signature": {
+      "type": ["string", "null"],
+      "description": "Base64 Ed25519 signature over canonical JSON of signed claim fields"
+    },
+    "public_key_id": { "type": "string" }
+  }
+}
