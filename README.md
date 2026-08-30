@@ -146,14 +146,79 @@ toa-verify examples/unsigned-example.json
 
 ---
 
-## Who should care
+## Use cases by audience
 
-| Audience | Why |
-|---|---|
-| **MCP server authors** | Gate releases on delivery grades, not “Inspector connected” |
-| **Platform / gateway teams** | Require a recent valid TOA before listing or promoting a wrapper |
-| **Agent builders** | Separate “model picked the wrong tool” from “tool returned garbage” |
-| **Security / procurement** | Portable, signed evidence you can attach to a review pack |
+These are **roles and company classes**, not claims that every named company already uses TOA. Use them to map who verifies, who emits, and who requires the artifact.
+
+### 1. Pre-prod / CI tooling (MCPJam-class)
+
+**Job:** catch MCP regressions before merge.  
+**Examples of the class:** MCPJam, custom Jest/Vitest harnesses, GitHub Actions “doctor” jobs.
+
+**How TOA fits:** after doctor / protocol conformance / host evals, add one step that verifies a TOA (or emits one from richer delivery checks) and fails on `layers.functional != pass` or `shape == fail`.  
+**Does not replace:** OAuth debugger, client-matrix, LLM evals, JSON-RPC traces.
+
+### 2. Gateways & control planes (Nasiko / Composio-class)
+
+**Job:** decide which MCP servers and tools agents may call in production.  
+**Examples of the class:** Nasiko, Composio, Zapier MCP, enterprise internal gateways, API management teams wrapping MCP.
+
+**How TOA fits:** allowlist / promote a connector only when a recent TOA verifies for a trusted emitter. Policy can require `functional=pass` and treat `shape=fail` as block.  
+**Does not replace:** auth, budgets, TokenOps, A2A routing.
+
+### 3. Registries & directories (Smithery / Pulse-class)
+
+**Job:** catalog and rank MCP servers for discovery.  
+**Examples of the class:** Smithery, Glama, PulseMCP, curated internal catalogs.
+
+**How TOA fits:** show “last attested delivery” next to stars/downloads; demote or flag servers whose latest TOA fails functional/shape.  
+**Does not replace:** search, packaging, install UX.
+
+### 4. MCP server authors (ISVs & open-source)
+
+**Job:** ship tools that hosts and gateways will trust.  
+**Examples of the class:** DeepWiki/Cognition-style public MCPs, Stripe/Notion/Linear-style product MCPs, FastMCP starters, internal platform teams publishing company tools.
+
+**How TOA fits:** attach a signed TOA to the release or README; run `toa-verify` in CI before tag. Proves delivery grades, not just “Inspector connected.”  
+**Does not replace:** unit tests or their own eval suites.
+
+### 5. Agent product teams (builders on Cursor / Claude / ChatGPT)
+
+**Job:** ship agents that depend on third-party MCP tools.  
+**Examples of the class:** startups wiring Composio tools, enterprises wiring internal MCP to Claude Desktop / Cursor / custom harnesses.
+
+**How TOA fits:** separate “our model picked the wrong tool” from “the tool returned empty success.” Require TOA on critical connectors in staging.  
+**Does not replace:** product evals or tracing (LangSmith-class).
+
+### 6. Security, risk, procurement
+
+**Job:** approve agent stacks that call external tools.  
+**Examples of the class:** bank / healthcare AI governance, SOC2 vendors, IT risk reviewing MCP gateways.
+
+**How TOA fits:** portable signed evidence in the diligence pack (“independent observer graded delivery on date X”). Prefer emitters you trust; verify offline.  
+**Does not replace:** legal review, penetration tests, or vendor questionnaires.
+
+### 7. Continuous monitoring (AgentStatus)
+
+**Job:** watch MCP servers after ship, from real probes over time.  
+**How TOA fits:** AgentStatus **emits** TOA from production runs; open verify lets CI and partners consume the same grades.  
+**Does not replace:** dashboards, alerts, MRI / MCP Index, multi-step workflows.
+
+### Suggested CI sandwich (pre-prod + evidence)
+
+```text
+MCPJam doctor / protocol conformance
+        +
+MCPJam (or other) host/model evals     ← “did the agent pick the right tool?”
+        +
+toa-verify (AgentStatus or local emit) ← “did the tool actually deliver?”
+        →
+gateway / registry promote
+```
+
+Hands-on note (Aug 2026): MCPJam `server doctor` on a live public MCP confirmed connect + tools/list + **input** schema checks. Protocol profile still lists `modern-tool-output-schema-conformant` as **pending / unscored**. That is the delivery/shape gap TOA is built for.
+
+---
 
 ## Trust and threat model (short)
 
@@ -176,6 +241,7 @@ toa-verify examples/unsigned-example.json
 | [`python/`](./python/) | `toa-verify` reference implementation |
 | [`javascript/`](./javascript/) | Node verify + CLI |
 | [`examples/`](./examples/) | Signed/unsigned samples + CI notes |
+| [`docs/MCPJAM_CEO_BRIEF.md`](./docs/MCPJAM_CEO_BRIEF.md) | Hands-on complementarity notes (MCPJam) |
 
 ## Related
 
