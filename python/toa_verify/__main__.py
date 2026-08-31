@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from .verify import verify_document
+from .verify import parse_max_age_seconds, verify_document
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,13 +31,27 @@ def main(argv: list[str] | None = None) -> int:
         metavar="LAYER=STATUS",
         help="Require layer status, e.g. functional=pass (repeatable)",
     )
+    parser.add_argument(
+        "--max-age",
+        default=None,
+        metavar="DURATION",
+        help="Fail if observed_at is older than this (e.g. 24h, 7d, 3600). Optional.",
+    )
     args = parser.parse_args(argv)
 
     doc = json.loads(args.document.read_text(encoding="utf-8"))
+    max_age_seconds = None
+    if args.max_age is not None:
+        try:
+            max_age_seconds = parse_max_age_seconds(args.max_age)
+        except ValueError as exc:
+            print(json.dumps({"valid": False, "reason": str(exc)}, indent=2))
+            return 1
     result = verify_document(
         doc,
         public_key=args.public_key,
         require_emitter=args.require_emitter,
+        max_age_seconds=max_age_seconds,
     )
     if not result.get("valid"):
         print(json.dumps(result, indent=2))

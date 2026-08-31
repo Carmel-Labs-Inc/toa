@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import base64
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 
@@ -73,16 +75,54 @@ def default_agentstatus_v1_key_path() -> Path:
     return Path(__file__).resolve().parents[2] / "keys" / "agentstatus-v1.json"
 
 
+
+def parse_max_age_seconds(value: Union[str, int, float]) -> int:
+    """Parse max age as seconds. Accepts int seconds or strings like 3600, 24h, 7d, 90m."""
+    if isinstance(value, (int, float)):
+        n = int(value)
+        if n < 0:
+            raise ValueError("max_age must be non-negative")
+        return n
+    s = str(value).strip().lower()
+    if not s:
+        raise ValueError("empty max_age")
+    m = re.fullmatch(r"(\d+)\s*([smhd]?)", s)
+    if not m:
+        raise ValueError(f"bad_max_age:{value}")
+    n = int(m.group(1))
+    unit = m.group(2) or "s"
+    mult = {"s": 1, "m": 60, "h": 3600, "d": 86400}[unit]
+    return n * mult
+
+
+def parse_observed_at(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def verify_document(
     document: Mapping[str, Any],
     *,
     public_key: Optional[KeyMaterial] = None,
     require_emitter: Optional[str] = None,
+    max_age_seconds: Optional[int] = None,
+    now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
     Verify a TOA document.
 
     Returns dict with keys: valid (bool), reason (str), and claim fields on success.
+    When max_age_seconds is set, observed_at must be within that window of now (UTC).
     """
     if not isinstance(document, Mapping):
         return {"valid": False, "reason": "not_an_object"}
@@ -122,6 +162,28 @@ def verify_document(
         return {"valid": False, "reason": "invalid_signature", "claim": body}
     except Exception as exc:
         return {"valid": False, "reason": f"verify_error:{exc}", "claim": body}
+
+    if max_age_seconds is not None:
+        observed = parse_observed_at(body.get("observed_at"))
+        if observed is None:
+            return {"valid": False, "reason": "missing_or_invalid_observed_at", "claim": body}
+        ref = now.astimezone(timezone.utc) if isinstance(now, datetime) else datetime.now(timezone.utc)
+        age = (ref - observed).total_seconds()
+        if age < 0:
+            return {
+                "valid": False,
+                "reason": "observed_at_in_future",
+                "claim": body,
+                "age_seconds": age,
+            }
+        if age > max_age_seconds:
+            return {
+                "valid": False,
+                "reason": "stale_attestation",
+                "claim": body,
+                "age_seconds": int(age),
+                "max_age_seconds": max_age_seconds,
+            }
 
     return {
         "valid": True,

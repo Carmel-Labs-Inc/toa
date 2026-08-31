@@ -35,7 +35,8 @@ jobs:
           python -m toa_verify "${{ inputs.toa_path || 'toa.json' }}" \
             --public-key keys/agentstatus-v1.json \
             --require-emitter agentstatus \
-            --require-layer functional=pass
+            --require-layer functional=pass \
+            --max-age 7d
 ```
 
 ## Against AgentStatus HTTP verify

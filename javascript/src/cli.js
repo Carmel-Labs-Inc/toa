@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { verifyDocument } from "./verify.js";
+import { parseMaxAgeSeconds, verifyDocument } from "./verify.js";
 
 function usage() {
-  console.error(`Usage: toa-verify <document.json> [--public-key keys/v1.json] [--require-emitter agentstatus] [--require-layer functional=pass]`);
+  console.error(`Usage: toa-verify <document.json> [--public-key keys/v1.json] [--require-emitter agentstatus] [--require-layer functional=pass] [--max-age 24h]`);
   process.exit(2);
 }
 
@@ -17,7 +17,14 @@ for (let i = 1; i < args.length; i++) {
   if (args[i] === "--public-key") opts.publicKey = args[++i];
   else if (args[i] === "--require-emitter") opts.requireEmitter = args[++i];
   else if (args[i] === "--require-layer") requireLayers.push(args[++i]);
-  else usage();
+  else if (args[i] === "--max-age") {
+    try {
+      opts.maxAgeSeconds = parseMaxAgeSeconds(args[++i]);
+    } catch (err) {
+      console.log(JSON.stringify({ valid: false, reason: String(err.message || err) }, null, 2));
+      process.exit(1);
+    }
+  } else usage();
 }
 
 const doc = JSON.parse(readFileSync(path, "utf8"));
