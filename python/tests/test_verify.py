@@ -81,3 +81,45 @@ def test_local_keypair_roundtrip(tmp_path):
     keyfile = tmp_path / "k.json"
     keyfile.write_text(json.dumps({"public_key": pub_b64}))
     assert verify_document(doc, public_key=keyfile, require_emitter="demo")["valid"] is True
+
+
+def test_max_age_rejects_stale():
+    from datetime import datetime, timezone
+
+    doc = json.loads((ROOT / "examples" / "signed-example.json").read_text())
+    # observed_at in fixture is in the past relative to a far-future now
+    result = verify_document(
+        doc,
+        require_emitter="agentstatus",
+        max_age_seconds=60,
+        now=datetime(2099, 1, 1, tzinfo=timezone.utc),
+    )
+    assert result["valid"] is False
+    assert result["reason"] == "stale_attestation"
+
+
+def test_max_age_accepts_fresh():
+    from datetime import datetime, timezone
+
+    doc = json.loads((ROOT / "examples" / "signed-example.json").read_text())
+    observed = doc["observed_at"]
+    # parse fixture time and set now just after it
+    from toa_verify.verify import parse_observed_at
+
+    obs = parse_observed_at(observed)
+    result = verify_document(
+        doc,
+        require_emitter="agentstatus",
+        max_age_seconds=86400 * 365 * 50,
+        now=obs,
+    )
+    assert result["valid"] is True
+
+
+def test_parse_max_age_seconds():
+    from toa_verify.verify import parse_max_age_seconds
+
+    assert parse_max_age_seconds("24h") == 86400
+    assert parse_max_age_seconds("7d") == 604800
+    assert parse_max_age_seconds("90m") == 5400
+    assert parse_max_age_seconds(3600) == 3600
