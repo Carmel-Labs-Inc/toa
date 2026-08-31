@@ -80,7 +80,15 @@ function loadPublicKeyRaw(keyMaterial) {
 
 export function defaultAgentstatusV1KeyPath() {
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "keys", "agentstatus-v1.json");
+  // Prefer key shipped next to the JS package (javascript/keys).
+  const packaged = join(here, "..", "keys", "agentstatus-v1.json");
+  try {
+    readFileSync(packaged);
+    return packaged;
+  } catch {
+    // Dev checkout: <repo>/javascript/src -> <repo>/keys
+    return join(here, "..", "..", "keys", "agentstatus-v1.json");
+  }
 }
 
 

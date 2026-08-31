@@ -72,6 +72,11 @@ def _load_public_key_bytes(key: KeyMaterial) -> bytes:
 
 
 def default_agentstatus_v1_key_path() -> Path:
+    # Prefer key shipped inside the installed package (pip subdirectory=python).
+    packaged = Path(__file__).resolve().parent / "keys" / "agentstatus-v1.json"
+    if packaged.is_file():
+        return packaged
+    # Dev checkout layout: <repo>/python/toa_verify/ -> <repo>/keys/
     return Path(__file__).resolve().parents[2] / "keys" / "agentstatus-v1.json"
 
 
