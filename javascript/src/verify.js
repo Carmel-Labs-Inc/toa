@@ -83,9 +83,32 @@ export function defaultAgentstatusV1KeyPath() {
   return join(here, "..", "..", "keys", "agentstatus-v1.json");
 }
 
+
+export function parseMaxAgeSeconds(value) {
+  if (typeof value === "number") {
+    if (value < 0 || !Number.isFinite(value)) throw new Error("max_age must be non-negative");
+    return Math.floor(value);
+  }
+  const s = String(value).trim().toLowerCase();
+  const m = s.match(/^(\d+)\s*([smhd]?)$/);
+  if (!m) throw new Error(`bad_max_age:${value}`);
+  const n = Number(m[1]);
+  const unit = m[2] || "s";
+  const mult = { s: 1, m: 60, h: 3600, d: 86400 }[unit];
+  return n * mult;
+}
+
+export function parseObservedAt(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const s = value.trim();
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 /**
  * @param {object} document
- * @param {{ publicKey?: any, requireEmitter?: string }} [opts]
+ * @param {{ publicKey?: any, requireEmitter?: string, maxAgeSeconds?: number, now?: Date }} [opts]
  */
 export function verifyDocument(document, opts = {}) {
   if (!document || typeof document !== "object") {
@@ -133,6 +156,27 @@ export function verifyDocument(document, opts = {}) {
   const ok = verify(null, message, keyObject, sig);
   if (!ok) {
     return { valid: false, reason: "invalid_signature", claim: body };
+  }
+
+  if (opts.maxAgeSeconds != null) {
+    const observed = parseObservedAt(body.observed_at);
+    if (!observed) {
+      return { valid: false, reason: "missing_or_invalid_observed_at", claim: body };
+    }
+    const ref = opts.now instanceof Date ? opts.now : new Date();
+    const age = (ref.getTime() - observed.getTime()) / 1000;
+    if (age < 0) {
+      return { valid: false, reason: "observed_at_in_future", claim: body, age_seconds: age };
+    }
+    if (age > opts.maxAgeSeconds) {
+      return {
+        valid: false,
+        reason: "stale_attestation",
+        claim: body,
+        age_seconds: Math.floor(age),
+        max_age_seconds: opts.maxAgeSeconds,
+      };
+    }
   }
 
   return {

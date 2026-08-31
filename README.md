@@ -97,7 +97,8 @@ Save `attestations[]` (or one document) as `toa.json` in CI artifacts or the PR.
 cd python && pip install -e .
 toa-verify path/to/toa.json \
   --require-emitter agentstatus \
-  --require-layer functional=pass
+  --require-layer functional=pass \
+  --max-age 7d
 ```
 
 **Node 18+**
@@ -106,10 +107,13 @@ toa-verify path/to/toa.json \
 cd javascript
 node src/cli.js path/to/toa.json \
   --require-emitter agentstatus \
-  --require-layer functional=pass
+  --require-layer functional=pass \
+  --max-age 7d
 ```
 
 Exit `0` only if the signature is valid **and** every `--require-layer` matches. That is the PR gate.
+
+Optional freshness: `--max-age 7d` (also `24h`, `90m`, or raw seconds) fails with `stale_attestation` when `observed_at` is too old.
 
 Public key used by default: [`keys/agentstatus-v1.json`](./keys/agentstatus-v1.json).
 
