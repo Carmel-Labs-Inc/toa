@@ -18,3 +18,7 @@ toa-verify = "toa_verify.__main__:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["toa_verify*"]
+
+[tool.setuptools.package-data]
+toa_verify = ["keys/*.json"]
+

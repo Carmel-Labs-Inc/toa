@@ -115,7 +115,7 @@ Exit `0` only if the signature is valid **and** every `--require-layer` matches.
 
 Optional freshness: `--max-age 7d` (also `24h`, `90m`, or raw seconds) fails with `stale_attestation` when `observed_at` is too old.
 
-Public key used by default: [`keys/agentstatus-v1.json`](./keys/agentstatus-v1.json).
+Public key used by default: [`keys/agentstatus-v1.json`](./keys/agentstatus-v1.json) (also packaged inside `toa_verify` so `pip install ...#subdirectory=python` works without a separate key checkout).
 
 ### 3. Verify via AgentStatus HTTP (no vendored key)
 
