@@ -181,6 +181,7 @@ def validate_binding(
     document_store: Optional[DocumentStore] = None,
     resolve: Optional[ResolveFn] = None,
     now: Optional[datetime] = None,
+    expected_tool_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Validate an AttestationBinding against client settings (§8).
@@ -227,6 +228,17 @@ def validate_binding(
         if str(reason).startswith("unsupported_spec"):
             return _fail("spec_mismatch", verify_reason=reason)
         return _fail("invalid_signature", verify_reason=reason)
+
+    # §9.4 tool correlation
+    if expected_tool_name is not None:
+        tool = document.get("tool") if isinstance(document.get("tool"), dict) else {}
+        if tool.get("name") != expected_tool_name:
+            return _fail(
+                "missing_binding",
+                detail="tool_name_mismatch",
+                got=tool.get("name"),
+                expected=expected_tool_name,
+            )
 
     # §8.4 emitter_role
     role = binding.get("emitter_role")

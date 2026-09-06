@@ -14,6 +14,7 @@ The parent repository still owns the portable evidence format (`toa/0.1`) and of
 3. [`specification/draft/toa-extension.md`](./specification/draft/toa-extension.md) — RFC 2119 wire spec
 4. [`DECISIONS.md`](./DECISIONS.md) — dated decisions closing open questions
 5. [`conformance/SCENARIOS.md`](./conformance/SCENARIOS.md) — Tasks-quality scenario plan
+6. [`docs/security-ig-outreach.md`](./docs/security-ig-outreach.md) — Security IG Discord / Discussion draft
 
 ## Extension ID
 
