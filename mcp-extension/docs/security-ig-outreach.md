@@ -1,121 +1,76 @@
-# Security IG outreach — Tool Outcome Attestation (TOA)
+# Security IG outreach — TOA
 
-**Status:** draft for posting (not posted yet)  
-**Date:** 2026-09-06  
-**Target:** MCP Security Interest Group (`#security-ig`)  
-**Facilitators:** Den Delimarsky (`@localden`), Paul Carleton (`@pcarleton`)  
-**Charter:** [Security IG](https://modelcontextprotocol.io/community/interest-groups/security)  
-**Notes category:** [Meeting Notes - Security IG](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/categories/meeting-notes-security-ig)
+Draft for `#security-ig`. Post when ready. Don’t claim sponsorship.
 
----
-
-## Why this group
-
-Security IG scope already includes **auditability and observability** (“tamper-evident records of what a tool call did”) and **server identity / attestation / admission**. TOA is the *outcome* half of that story, complementary to admission.
-
-Paul closed docs-only [conformance#479](https://github.com/modelcontextprotocol/conformance/pull/479) with: propose an extension + conformance tests. That is the path we are on.
+Discord: https://discord.com/channels/1358869848138059966/1379811011669921883  
+Charter: https://modelcontextprotocol.io/community/interest-groups/security  
+Repo: https://github.com/Carmel-Labs-Inc/toa
 
 ---
 
-## Discord post (short)
-
-**Suggested channel:** `#security-ig`  
-**Tone:** problem + distinction from ATSA + ask for agenda slot — not a product pitch.
+## Discord (use this)
 
 ```text
-Hi Security IG — looking for a brief agenda slot / feedback on incubating work.
+hey — wanted to float something for feedback / maybe an office hours slot if it fits
 
-Problem: MCP protocol success (JSON-RPC ok / HTTP 200) is not tool *delivery* success. Empty prose, soft-error content, schema drift, and broken multi-step handles still look “successful.” Gateways and hosts have no shared, negotiable way to require attested outcomes.
+short version: MCP makes calling tools interoperable, but “RPC succeeded” still isn’t the same as “the tool actually delivered.” empty prose, soft errors in content, schema drift, broken multi-step flows… all can look fine on the wire. gateways and hosts don’t have a shared way to say “I require attested outcomes.”
 
-Proposal (incubating, vendor-prefixed): MCP extension `dev.agentstatus/toa` (SEP-2133 reverse-DNS for agentstatus.dev) that negotiates attach/require of a portable signed `toa/0.1` evidence document on tools/call results. Trust is pinned to emitter role (third_party | observer | server) + key — not “signature present.” Offline verify; no vendor account required to verify.
+we’ve been incubating two pieces (apache-2.0):
 
-Deliberately complementary to SEP-2809 ATSA:
-- ATSA = admit the *server* before dispatch (identity / clearance)
-- TOA = attest the *tool call outcome* after/around delivery
+1. toa/0.1 — small signed evidence doc (graded layers: reach → invoke → functional → …). offline verify, pin the emitter + key. no account needed to verify.
+2. optional MCP extension `dev.agentstatus/toa` (sep-2133 reverse-dns for agentstatus.dev) so clients can require / servers-or-observers can attach that evidence on tools/call results via _meta. trust is role-pinned (third_party | observer | server) — server self-attest is allowed but not the default happy path.
 
-Artifacts (Apache-2.0):
-- Evidence + verify: https://github.com/Carmel-Labs-Inc/toa
-- Extension thesis / SEP draft / wire spec / T1–T10 harness:
-  https://github.com/Carmel-Labs-Inc/toa/tree/main/mcp-extension
+this is intentionally next to ATSA (sep-2809), not a replacement:
+- ATSA ≈ admit the server before you talk to it
+- TOA ≈ attest what a tool call actually delivered
 
-Ask: (1) Is outcome attestation in Security IG scope vs a new IG?
-(2) Interest in reviewing the SEP draft before any experimental-ext request?
-(3) How you want this distinguished from ATSA in the IG backlog?
+docs/spec/harness are in the repo under mcp-extension/:
+https://github.com/Carmel-Labs-Inc/toa/tree/main/mcp-extension
 
-Happy to take hard feedback. Not asking for official status yet.
+questions for the IG:
+1. does outcome / delivery attestation sit under security IG (auditability), or should this live elsewhere?
+2. worth a quick review of the draft before we even think about experimental-ext?
+3. any guidance on how you want this tracked relative to ATSA so we don’t confuse the two?
+
+not asking for official anything yet. happy to take blunt feedback.
 ```
 
 ---
 
-## GitHub Discussion post (longer, optional)
+## Longer GitHub Discussion (optional)
 
-**Category:** preferably a Security IG discussion, or new thread linked from `#security-ig`  
-**Title:** Incubating extension: Tool Outcome Attestation (`dev.agentstatus/toa`) — feedback requested
+**Title:** Incubating: tool outcome attestation (`dev.agentstatus/toa`)
 
 ### Body
 
-## Summary
+We’ve been working on a gap that keeps biting people in production MCP stacks: protocol success isn’t delivery success. A `tools/call` can return empty text, a soft error wrapped as content, or a broken handoff and still look like a clean RPC.
 
-We are incubating an optional MCP extension for **negotiated tool-outcome attestation**, following SEP-2133. This note asks Security IG whether the problem belongs here, how it should sit next to SEP-2809 (ATSA), and whether the draft is worth an office-hours review.
+What exists today:
 
-## Problem
+- `toa/0.1` — portable signed JSON with graded delivery layers. Verify offline against a pinned emitter key. Spec + python/js verify in https://github.com/Carmel-Labs-Inc/toa
+- Draft MCP extension `dev.agentstatus/toa` — negotiate attach/require of that evidence on `tools/call` results. Thesis, SEP draft, wire spec, and T1–T10 conformance harness under `mcp-extension/`
 
-MCP makes tool invocation interoperable. It does not define a shared artifact for whether delivery *succeeded* in an operationally meaningful sense. Today, stacks treat JSON-RPC success, HTTP 200, or server self-declarations as proxies. Those proxies fail open for empty/soft-error payloads and fail closed too late for gateways that need evidence.
+What this is not:
 
-## What we are *not* proposing
+- not a docs-only “run verify after CI” tip (that approach already got pushed back on in conformance, correctly — needs a real extension + tests)
+- not ATSA / server admission (SEP-2809). Different moment in the lifecycle.
+- not “trust whatever the server signs about itself” by default
+- not tied to an AgentStatus login for verify
 
-- Not docs-only “run `toa-verify` after conformance” (already tried; correctly closed in conformance#479).
-- Not replacing ATSA / server admission.
-- Not requiring an AgentStatus account to verify.
-- Not treating server self-attestation as the default trust root.
+Why Security IG: charter already covers auditability / tamper-evident records of what a tool call did. We’re asking whether outcome attestation belongs here, and whether the draft is worth an office-hours pass before any `experimental-ext-*` ask.
 
-## What we are proposing
-
-1. Portable evidence format `toa/0.1` (already open): signed graded layers (reach → invoke → functional → …).
-2. MCP extension id `dev.agentstatus/toa`: client can `require` attested bindings; server/observer can `attach` on `tools/call` results via `_meta`.
-3. Conformance scenarios T1–T10 (negotiation, attach, fail-closed, role pinning, signature/age/hash).
-4. Later: IG sponsorship → experimental-ext → official `io.modelcontextprotocol/*` only via SEP acceptance.
-
-Repo: https://github.com/Carmel-Labs-Inc/toa (`mcp-extension/` for the protocol track).
-
-## Relation to SEP-2809 ATSA
-
-| | ATSA (SEP-2809) | TOA (`dev.agentstatus/toa`) |
-|---|---|---|
-| When | Before dispatch | On / after tool result |
-| Object | Server identity / clearance | Tool call delivery outcome |
-| Trust question | “Is this server admitted?” | “Did this call deliver, per a pinned emitter?” |
-
-Both can coexist: admit with ATSA, require TOA outcomes for promote/CI/high-assurance clients.
-
-## Asks for Security IG
-
-1. Confirm scope: auditability / outcome evidence under Security IG vs elsewhere.
-2. 15–20 min office-hours review of thesis + wire draft.
-3. Guidance on experimental-ext timing (after reference SDK path is solid).
-
-## Non-goals for this message
-
-Merging into core MCP. Renaming to `io.modelcontextprotocol/toa` unilaterally. Product placement for AgentStatus monitoring.
+Happy to adjust scope, naming, or trust model based on IG feedback.
 
 ---
 
-## Talking points if Paul / Den push back
+## After you post
 
-- **“This is vendor promo.”** Extension is vendor-*prefixed* by SEP-2133 rules while incubating; verify is offline and emitter-agnostic; AgentStatus is one possible `third_party` emitter.
-- **“Use ATSA.”** Different threat: admission ≠ outcome. Soft-fail tool bodies pass admission.
-- **“Self-sign on the server.”** Thesis L1: `server` role allowed but not default trust; conformance T4 rejects `server` when client does not accept it.
-- **“Come back with experimental-ext.”** Need IG association first per SEP-2133; that is why we are here.
+- [ ] Paste Discord version in `#security-ig`
+- [ ] Optional Discussion; link the two
+- [ ] Drop the thread URL into DECISIONS / contribution tracking when you have it
 
-## After posting
+## Don’t
 
-- [ ] Paste Discord message in `#security-ig`
-- [ ] Optional: open GitHub Discussion; link Discord ↔ Discussion
-- [ ] Add agenda ask for next Security IG office hours
-- [ ] Update `DECISIONS.md` / contribution targets with discussion URL when live
-
-## Do not
-
-- Refile docs-only PRs to `modelcontextprotocol/conformance`
-- Claim Security IG sponsorship before they say so
-- Pitch Fabric pricing in IG channels (antitrust / CoC)
+- Refile docs-only conformance PRs
+- Say the IG “sponsors” this before they do
+- Pitch product pricing in IG channels
