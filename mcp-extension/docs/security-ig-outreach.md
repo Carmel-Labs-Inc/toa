@@ -1,47 +1,48 @@
-# Security IG outreach — TOA
+# Security IG submission — TOA
 
-Draft for `#security-ig`. Post after E2E is green. Don’t claim sponsorship.
+Not a permission ask. The work is delivered. Post this after the SEP PR is open (or with the compare link if GitHub needs a one-click confirm).
 
 Discord: https://discord.com/channels/1358869848138059966/1379811011669921883  
-Repo: https://github.com/Carmel-Labs-Inc/toa
+SEP branch (open PR): https://github.com/modelcontextprotocol/modelcontextprotocol/compare/main...dulrajnr:mcp-sep-toa:sep/tool-outcome-attestation?quick_pull=1  
+Reference impl: https://github.com/Carmel-Labs-Inc/toa  
+SEP text in-repo: https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/seps/0000-tool-outcome-attestation.md
 
 ---
 
 ## Discord (use this)
 
 ```text
-Hey — sharing incubating work on tool outcome attestation for MCP, looking for Security IG eyes when you have bandwidth.
+Submitted an Extensions Track SEP for Tool Outcome Attestation and posting it here for Security IG tracking next to ATSA.
 
-Problem: MCP made tool calls interoperable, but “RPC succeeded” still isn’t “the tool delivered.” Empty prose, soft errors in content, schema drift, broken multi-step flows can all look fine on the wire. Gateways and hosts don’t have a shared, negotiable way to require attested outcomes.
+Problem: MCP tool RPC success still isn’t delivery success. Empty prose, soft errors in content, schema drift, broken multi-step flows can all look fine on the wire. There’s been no shared, negotiable way to require attested outcomes.
 
-What we have (Apache-2.0):
+What’s delivered (not a sketch):
 
-1. toa/0.1 — portable signed evidence doc (graded layers: reach → invoke → functional → …). Offline verify against a pinned emitter + key. No account needed to verify.
-2. Optional MCP extension `dev.agentstatus/toa` (SEP-2133 reverse-DNS for agentstatus.dev). Clients can require / servers-or-observers can attach that evidence on tools/call results via _meta. Trust is role-pinned (third_party | observer | server); server self-attest is allowed but not the default trust root.
+1. toa/0.1 — portable signed evidence (graded layers). Offline verify. Pin emitter + key. No vendor account required to verify.
+2. Extension `dev.agentstatus/toa` (SEP-2133 reverse-DNS for agentstatus.dev) — clients require / servers-or-observers attach on tools/call `_meta`. Role-pinned trust (third_party | observer | server); server self-attest is not the default trust root.
+3. Reference implementation + conformance T1–T10 + full E2E on the official MCP Python SDK 2.1 (2026-07-28 discover → attach → require → fail-closed, including stdio subprocess).
 
-Where this sits: Security IG already covers auditability / tamper-evident records of what a tool call did. That’s the home for this. We’re not asking to invent a new IG for it.
-
-Relative to ATSA (SEP-2809): complementary, not competing.
+Positioning vs ATSA (SEP-2809): complementary.
 - ATSA = admit the server before dispatch
-- TOA = attest tool-call delivery outcome after/around the call
-Both can coexist (admit with ATSA, require TOA for high-assurance promote/CI).
+- TOA = attest tool-call delivery outcome
+Both can run together.
 
-We’re past docs-only. Spec + SEP draft + conformance harness + reference attach path live here, including E2E against the official MCP Python SDK (2026-07-28 negotiate → attach → require → fail-closed):
-https://github.com/Carmel-Labs-Inc/toa/tree/main/mcp-extension
+Security IG is the right home (auditability / tamper-evident records of what a tool call did). Not proposing a new IG.
 
-Not asking for official status or experimental-ext yet. Want blunt review of the draft and whether the Security IG backlog is the right place to track it next to ATSA so the two don’t get conflated.
+SEP: https://github.com/modelcontextprotocol/modelcontextprotocol/compare/main...dulrajnr:mcp-sep-toa:sep/tool-outcome-attestation?quick_pull=1
+Impl: https://github.com/Carmel-Labs-Inc/toa/tree/main/mcp-extension
+
+Looking for a sponsor per the SEP workflow. Happy to take technical objections on the draft.
 ```
 
 ---
 
-## After you post
+## After SEP PR number exists
 
-- [ ] Paste into `#security-ig`
-- [ ] Optional GitHub Discussion with the same framing
-- [ ] Save the thread URL in DECISIONS / contribution tracking
+Replace the compare URL in the Discord text with the real `https://github.com/modelcontextprotocol/modelcontextprotocol/pull/NNNN` link.
 
 ## Don’t
 
+- Soften this into “is it okay if we…?”
 - Refile docs-only conformance PRs
-- Claim IG sponsorship before they say so
 - Pitch product pricing in IG channels
