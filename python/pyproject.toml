@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "toa-verify"
 version = "0.1.0"
-description = "Verify Tool Outcome Attestation (toa/0.1) documents"
+description = "Verify Tool Outcome Attestation (toa/0.1) documents and MCP extension bindings"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -15,10 +15,12 @@ dependencies = ["cryptography>=42.0.0"]
 [project.scripts]
 toa-verify = "toa_verify.__main__:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["toa_verify*"]
+include = ["toa_verify*", "toa_ext*"]
 
 [tool.setuptools.package-data]
 toa_verify = ["keys/*.json"]
-
