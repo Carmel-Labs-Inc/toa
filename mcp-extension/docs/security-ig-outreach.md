@@ -11,28 +11,28 @@ Repo: https://github.com/Carmel-Labs-Inc/toa
 ## Discord (use this)
 
 ```text
-hey — wanted to float something for feedback / maybe an office hours slot if it fits
+Hey — wanted to float something for feedback / maybe an office hours slot if it fits.
 
-short version: MCP makes calling tools interoperable, but “RPC succeeded” still isn’t the same as “the tool actually delivered.” empty prose, soft errors in content, schema drift, broken multi-step flows… all can look fine on the wire. gateways and hosts don’t have a shared way to say “I require attested outcomes.”
+Short version: MCP makes calling tools interoperable, but “RPC succeeded” still isn’t the same as “the tool actually delivered.” Empty prose, soft errors in content, schema drift, broken multi-step flows… all can look fine on the wire. Gateways and hosts don’t have a shared way to say “I require attested outcomes.”
 
-we’ve been incubating two pieces (apache-2.0):
+We’ve been incubating two pieces (Apache-2.0):
 
-1. toa/0.1 — small signed evidence doc (graded layers: reach → invoke → functional → …). offline verify, pin the emitter + key. no account needed to verify.
-2. optional MCP extension `dev.agentstatus/toa` (sep-2133 reverse-dns for agentstatus.dev) so clients can require / servers-or-observers can attach that evidence on tools/call results via _meta. trust is role-pinned (third_party | observer | server) — server self-attest is allowed but not the default happy path.
+1. toa/0.1 — small signed evidence doc (graded layers: reach → invoke → functional → …). Offline verify, pin the emitter + key. No account needed to verify.
+2. Optional MCP extension `dev.agentstatus/toa` (SEP-2133 reverse-DNS for agentstatus.dev) so clients can require / servers-or-observers can attach that evidence on tools/call results via _meta. Trust is role-pinned (third_party | observer | server) — server self-attest is allowed but not the default happy path.
 
-this is intentionally next to ATSA (sep-2809), not a replacement:
+This is intentionally next to ATSA (SEP-2809), not a replacement:
 - ATSA ≈ admit the server before you talk to it
 - TOA ≈ attest what a tool call actually delivered
 
-docs/spec/harness are in the repo under mcp-extension/:
+Docs/spec/harness are in the repo under mcp-extension/:
 https://github.com/Carmel-Labs-Inc/toa/tree/main/mcp-extension
 
-questions for the IG:
-1. does outcome / delivery attestation sit under security IG (auditability), or should this live elsewhere?
-2. worth a quick review of the draft before we even think about experimental-ext?
-3. any guidance on how you want this tracked relative to ATSA so we don’t confuse the two?
+Questions for the IG:
+1. Does outcome / delivery attestation sit under Security IG (auditability), or should this live elsewhere?
+2. Worth a quick review of the draft before we even think about experimental-ext?
+3. Any guidance on how you want this tracked relative to ATSA so we don’t confuse the two?
 
-not asking for official anything yet. happy to take blunt feedback.
+Not asking for official anything yet. Happy to take blunt feedback.
 ```
 
 ---
@@ -52,10 +52,10 @@ What exists today:
 
 What this is not:
 
-- not a docs-only “run verify after CI” tip (that approach already got pushed back on in conformance, correctly — needs a real extension + tests)
-- not ATSA / server admission (SEP-2809). Different moment in the lifecycle.
-- not “trust whatever the server signs about itself” by default
-- not tied to an AgentStatus login for verify
+- Not a docs-only “run verify after CI” tip (that approach already got pushed back on in conformance, correctly — needs a real extension + tests)
+- Not ATSA / server admission (SEP-2809). Different moment in the lifecycle.
+- Not “trust whatever the server signs about itself” by default
+- Not tied to an AgentStatus login for verify
 
 Why Security IG: charter already covers auditability / tamper-evident records of what a tool call did. We’re asking whether outcome attestation belongs here, and whether the draft is worth an office-hours pass before any `experimental-ext-*` ask.
 
