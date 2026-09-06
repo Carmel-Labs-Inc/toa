@@ -36,3 +36,10 @@ __all__ = [
     "validate_binding",
 ]
 __version__ = "0.1.0"
+
+try:
+    from .mcp_sdk import ToaAttachExtension  # noqa: F401
+
+    __all__.append("ToaAttachExtension")
+except ImportError:
+    pass

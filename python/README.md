@@ -17,11 +17,13 @@ toa-verify path/to/signed.toa.json \
 
 ## MCP extension binding (`toa_ext`)
 
-Validates `dev.agentstatus/toa` AttestationBinding objects and provides a **reference attach path** (sign → `_meta` binding → require enforcement):
+Validates `dev.agentstatus/toa` AttestationBinding objects and provides a **reference attach path** (sign → `_meta` binding → require enforcement), plus an official MCP Python SDK Extension (`ToaAttachExtension`).
 
 ```bash
-cd python && pip install -e ".[dev]"
-pytest tests/test_binding.py tests/test_attach.py -q
+cd python && pip install -e ".[dev,e2e]"
+pytest tests/ -q
+# includes FakeMcp harness scenarios via unit tests + real SDK E2E (in-process + stdio)
+pytest tests/test_e2e_mcp_sdk.py -v
 ```
 
 Conformance golden fixtures live in `../mcp-extension/conformance/fixtures/`.
