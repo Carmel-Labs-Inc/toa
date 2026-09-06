@@ -32,14 +32,14 @@ Graduation to `io.modelcontextprotocol/toa` requires MCP governance acceptance �
 
 ## What “done” means (no vibe MVP)
 
-- [ ] Thesis locks reviewed and held
-- [x] Wire spec open questions closed (error taxonomy, advertise channel, URI schemes, IG home) — see [`DECISIONS.md`](./DECISIONS.md)
-- [x] Golden fixtures + Python `toa_ext` binding validate (T4–T8, T10 unit)
-- [x] Conformance harness scaffold (T1–T10 in-process) — [`conformance/harness/`](./conformance/harness/) — currently **10/10 PASS** with fixtures + `toa_ext`
+- [x] Thesis locks reviewed and held
+- [x] Wire spec open questions closed — see [`DECISIONS.md`](./DECISIONS.md)
+- [x] Golden fixtures + Python `toa_ext` binding validate
+- [x] Conformance harness T1–T10 (in-process) — **10/10 PASS**
+- [x] Reference attach path (`toa_ext.attach` + MCP SDK `ToaAttachExtension`)
+- [x] Full E2E vs official MCP Python SDK 2.1+ (2026-07-28 advertise/attach/require/fail-closed + stdio subprocess) — `python/tests/test_e2e_mcp_sdk.py`
+- [ ] Security IG review (outreach draft ready; post when you want)
 - [ ] Official MCP conformance PR (`--suite extensions`) after IG path
-- [ ] Reference attach + verify path in at least one language
-- [ ] MCP Interest Group / Working Group path started (Security IG first)
-- [ ] Only then: conformance PR that adds extension scenarios
 
 ## Relationship to AgentStatus
 
