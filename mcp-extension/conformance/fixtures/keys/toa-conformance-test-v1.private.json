@@ -1,0 +1,10 @@
+{
+  "key_id": "test-v1",
+  "algorithm": "Ed25519",
+  "encoding": "raw-base64",
+  "private_key": "L6U3AJBdJT8Hwm/HEHvwUePyt8pNNPY020cRt/ZNdFY=",
+  "public_key": "XgepsNFKoLJ5zfMnMbyYqmcM9VU6IIxgSBr7txnei7Y=",
+  "emitter": "toa-conformance",
+  "TEST_ONLY": true,
+  "WARNING": "TEST ONLY conformance private key. Do not use in production. Safe to commit for open conformance suites."
+}

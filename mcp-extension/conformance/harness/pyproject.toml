@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toa-ext-conformance"
+version = "0.1.0"
+description = "In-process conformance harness for MCP extension dev.agentstatus/toa"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Carmel Labs, Inc." }]
+dependencies = []
+
+[project.optional-dependencies]
+verify = ["toa-verify", "cryptography>=42.0.0"]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+toa-ext-conformance = "toa_ext_conformance.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["toa_ext_conformance*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

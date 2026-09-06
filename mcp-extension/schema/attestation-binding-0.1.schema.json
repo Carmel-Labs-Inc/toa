@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentstatus.dev/schemas/toa/mcp-extension/attestation-binding-0.1.json",
+  "title": "TOA MCP AttestationBinding",
+  "description": "Wire binding for extension dev.agentstatus/toa on tools/call result _meta. Embeds or references a toa/0.1 document. Product/human home is agentstatus.dev; the wire extension id is the SEP-2133 reverse-DNS form dev.agentstatus/toa.",
+  "type": "object",
+  "required": ["mode", "emitter_role", "spec"],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["embedded", "reference"]
+    },
+    "emitter_role": {
+      "type": "string",
+      "enum": ["third_party", "observer", "server"]
+    },
+    "spec": {
+      "const": "toa/0.1"
+    },
+    "document": {
+      "description": "Required when mode=embedded. Full toa/0.1 document.",
+      "type": "object"
+    },
+    "uri": {
+      "description": "Required when mode=reference.",
+      "type": "string",
+      "minLength": 1
+    },
+    "payload_hash": {
+      "description": "Required when mode=reference. Must equal document.payload_hash after resolve.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "emitter": {
+      "description": "Required when mode=reference. Must match document.emitter after resolve.",
+      "type": "object",
+      "required": ["name", "version", "key_id"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" },
+        "key_id": { "type": "string" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "mode": { "const": "embedded" } }
+      },
+      "then": {
+        "required": ["document"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "mode": { "const": "reference" } }
+      },
+      "then": {
+        "required": ["uri", "payload_hash", "emitter"]
+      }
+    }
+  ]
+}

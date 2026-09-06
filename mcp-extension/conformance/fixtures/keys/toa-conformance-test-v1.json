@@ -1,0 +1,9 @@
+{
+  "key_id": "test-v1",
+  "algorithm": "Ed25519",
+  "encoding": "raw-base64",
+  "public_key": "XgepsNFKoLJ5zfMnMbyYqmcM9VU6IIxgSBr7txnei7Y=",
+  "emitter": "toa-conformance",
+  "issued_by": "TOA MCP extension conformance suite",
+  "notes": "Public key for golden fixtures. Product home: agentstatus.dev; wire extension id: dev.agentstatus/toa."
+}

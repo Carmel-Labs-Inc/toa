@@ -1,0 +1,35 @@
+{
+  "spec": "toa/0.1",
+  "toa_id": "toa_a1b2c3d4e5f60718293a",
+  "tool": {
+    "name": "echo",
+    "server_id": "conformance-echo-server",
+    "catalog_hash": null
+  },
+  "run": {
+    "decision_id": "conformance-0718293a",
+    "agent_id": "00000000-0000-0000-0000-0000000000c0"
+  },
+  "observed_at": "2026-09-01T12:00:00Z",
+  "layers": {
+    "reach": "pass",
+    "invoke": "pass",
+    "functional": "pass",
+    "shape": "n/a",
+    "openapi_fidelity": "n/a",
+    "compositional": "n/a"
+  },
+  "outcome_grade": "substance",
+  "business_outcome_ok": true,
+  "reasons": [
+    "conformance:pass_functional golden"
+  ],
+  "emitter": {
+    "name": "toa-conformance",
+    "version": "0.1.0",
+    "key_id": "test-v1"
+  },
+  "payload_hash": "sha256:b26d393e929f5f4305d7a91e3a09fbc35a5c1b56f34d9567b5420241c95b27ec",
+  "signature": "BTCBcItROs3UHfJ0EarEcaUtLR09pZcG6OPIiPrr/ufmBLdIGaMzl0/fcErqAEGpBGhCCl5KiNglZ7sLpkPGBg==",
+  "public_key_id": "test-v1"
+}

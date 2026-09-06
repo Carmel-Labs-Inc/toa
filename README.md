@@ -28,13 +28,25 @@ TOA is that artifact: a small, **signed** JSON document that records graded laye
 | Offline verify (Python + JS) | Grading / outcome oracles |
 | AgentStatus **public** keys | Emit API + private signing key |
 | CI usage examples | Dashboards, alerts, MCP Index |
+| **MCP extension track** ([`mcp-extension/`](./mcp-extension/)) — negotiated capability + wire binding + SEP/conformance | Fabric Live observation network |
 
 You can verify anyone’s TOA offline. Emitting AgentStatus-signed attestations requires the product API (or another emitter that signs with its own key).
 
+### MCP extension track (industry standard path)
+
+`toa/0.1` is the portable evidence document. To make outcome verification a **negotiated MCP capability** (SEP-2133), see:
+
+- [`mcp-extension/THESIS.md`](./mcp-extension/THESIS.md) — locked design
+- [`mcp-extension/SEP-DRAFT.md`](./mcp-extension/SEP-DRAFT.md) — Extensions Track SEP draft
+- [`mcp-extension/specification/draft/toa-extension.md`](./mcp-extension/specification/draft/toa-extension.md) — RFC 2119 wire spec
+- [`mcp-extension/conformance/SCENARIOS.md`](./mcp-extension/conformance/SCENARIOS.md) — Tasks-quality conformance plan
+
+Incubating extension id: `dev.agentstatus/toa`. Docs-only conformance PR [#479](https://github.com/modelcontextprotocol/conformance/pull/479) was closed; the correct next step is extension + tests, which this track is for.
+
 ## What this is not
 
-- Not a new wire protocol (not a second MCP / A2A)
-- Not “the server promises it’s healthy” (self-attestations are the problem)
+- `toa/0.1` itself is not a new wire protocol (not a second MCP / A2A) — the optional MCP *extension* binds that evidence onto negotiated sessions
+- Not “the server promises it’s healthy” (self-attestations are the problem; extension roles pin trust)
 - Not a host/model eval format (those grade the agent; TOA grades the tool reply)
 - Not a substitute for live monitoring
 
@@ -245,7 +257,7 @@ Hands-on note (Aug 2026): MCPJam `server doctor` on a live public MCP confirmed 
 | [`python/`](./python/) | `toa-verify` reference implementation |
 | [`javascript/`](./javascript/) | Node verify + CLI |
 | [`examples/`](./examples/) | Signed/unsigned samples + CI notes |
-| [`docs/MCPJAM_CEO_BRIEF.md`](./docs/MCPJAM_CEO_BRIEF.md) | Hands-on complementarity notes (MCPJam) |
+| [`docs/complementarity-preprod.md`](./docs/complementarity-preprod.md) | How TOA sits next to MCPJam-style CI |
 
 ## Related
 
