@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentstatus.dev/schemas/toa/toa-negotiation-0.1.json",
+  "title": "TOA NegotiationRecord",
+  "description": "Client/gateway record of whether a server advertised dev.agentstatus/toa at capability exchange. Makes offline absence interpretable.",
+  "type": "object",
+  "required": [
+    "spec",
+    "recorded_at",
+    "protocol_version",
+    "server_id",
+    "server_advertised_toa"
+  ],
+  "properties": {
+    "spec": { "const": "toa-negotiation/0.1" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "protocol_version": { "type": "string", "minLength": 1 },
+    "server_id": { "type": "string", "minLength": 1 },
+    "server_advertised_toa": { "type": "boolean" },
+    "server_settings": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "client_settings": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "discover_request_id": { "type": ["string", "null"] }
+  }
+}

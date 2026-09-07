@@ -7,13 +7,16 @@
 - **Sponsor**: None (seeking sponsor)
 - **Extension Identifier**: `dev.agentstatus/toa`
 - **Reference implementation**: https://github.com/Carmel-Labs-Inc/toa
-- **PR**: (assigned on open)
+- **Tracking issue**: https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3350
+- **PR**: (blocked for non-collaborators; branch ready)
 
 ## Abstract
 
 MCP defines how clients invoke tools. It does not define a shared, verifiable language for whether a tool delivery outcome was actually satisfactory. Implementations today treat JSON-RPC success, HTTP 200, or self-declared server health as proxies for outcome. Those proxies fail closed too late and fail open too often.
 
 This SEP proposes an optional MCP extension, Tool Outcome Attestation (TOA), that negotiates whether `tools/call` results carry a binding to a portable signed `toa/0.1` evidence document, and whether clients may require such a binding under stated trust constraints. Trust is pinned to emitter identity and role (`third_party` | `observer` | `server`), not to "signature present." Verify is offline and does not require an AgentStatus (or any vendor) account.
+
+Absence is addressed explicitly: clients persist NegotiationRecords (`toa-negotiation/0.1`) so "never advertised TOA" is distinct from "advertised but missing attestation," and servers that advertise attach MUST emit signed negative outcomes (`disposition` / failing layers) instead of silence on failure.
 
 The incubating extension id is `dev.agentstatus/toa` (SEP-2133 reverse-DNS for `agentstatus.dev`). Official `io.modelcontextprotocol/*` naming is out of scope for this SEP and would require a later acceptance/migration SEP.
 
@@ -23,6 +26,7 @@ The incubating extension id is `dev.agentstatus/toa` (SEP-2133 reverse-DNS for `
 2. **Self-attestation is weak.** A server signing "I am fine" recreates the problem outcome attestation exists to escape.
 3. **No negotiation surface.** Gateways, hosts, and CI systems lack a capability flag that means "attested outcomes required," so policy stays proprietary and non-interoperable.
 4. **Evidence exists off to the side.** `toa/0.1` already defines a signed portable document and offline verify libraries. Without an MCP extension, it cannot participate in capability negotiation or extension conformance.
+5. **Absence must be informative.** A verifier with no attestation must distinguish "server never implemented TOA" from "server advertised TOA and failed/omitted evidence." Otherwise incentives favor going silent on failure.
 
 ### Relation to SEP-2809 (ATSA)
 
@@ -272,11 +276,11 @@ Bindings are optional. Invalid bindings SHOULD be ignored or surfaced as warning
 
 ### 9.3 Client `require: true`
 
-After a successful core `tools/call` result is received (or produced):
+After a `tools/call` completes (successful result, `isError: true` result, or peer error):
 
-- If no binding is present, the client MUST fail closed.
+- If no binding is present when the server advertised this extension with `attach` in (`on_require`, `always`), the client MUST fail closed and MUST record the miss against the negotiation record (§13).
 - If a binding is present but validation (§8) fails, the client MUST fail closed.
-- Servers advertising `attach: on_require` or `always` MUST attempt to attach a valid binding; if they cannot, they MUST return the error in §10 instead of a successful result without a binding.
+- Servers advertising `attach: on_require` or `always` MUST attach a valid binding on **both** positive and negative delivery paths (§14); if they cannot, they MUST return the error in §10 instead of a bare result/error without a binding.
 
 ### 9.4 Correlation
 
@@ -330,36 +334,109 @@ Implementations SHOULD prefer `reference` mode when documents would enlarge resu
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios published with the reference implementation at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (T1–T10), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative scenarios), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+
+---
+
+## 13. Absence semantics and negotiation records
+
+### 13.1 Problem
+
+A verifier holding only a bag of `toa/0.1` documents cannot, from silence alone, distinguish:
+
+1. The server never implemented / advertised this extension
+2. The server advertised this extension and delivery failed
+3. The server advertised this extension and omitted attestation for this call
+
+Without additional structure, offline absence is information-free and incentives run backwards: stopping attestation when things fail is indistinguishable from never supporting TOA.
+
+### 13.2 NegotiationRecord (normative companion)
+
+Clients and gateways that perform offline or post-hoc verification MUST persist a **NegotiationRecord** whenever they complete `server/discover` (or the protocol revision’s equivalent capability advertisement) against a server.
+
+`NegotiationRecord` MUST be a JSON object:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `spec` | yes | MUST be `toa-negotiation/0.1` |
+| `recorded_at` | yes | RFC 3339 time the record was written |
+| `protocol_version` | yes | Negotiated MCP protocol version string |
+| `server_id` | yes | Stable server identifier used by the client (implementation-defined; SHOULD match `toa.tool.server_id` when later attestations exist) |
+| `server_advertised_toa` | yes | boolean — `true` iff `capabilities.extensions["dev.agentstatus/toa"]` was present |
+| `server_settings` | no | Copy of the advertised settings object when `server_advertised_toa` is true |
+| `client_settings` | no | Client TOA settings used for subsequent calls in this context |
+| `discover_request_id` | no | Correlation id for the discover exchange |
+
+NegotiationRecord is **client-local evidence of advertisement**, not a server-signed claim. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement.
+
+Schema: https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/schema/toa-negotiation-0.1.schema.json
+
+### 13.3 Interpreting absence offline
+
+Given a NegotiationRecord and a set of attestations for the same `server_id` / time window:
+
+| `server_advertised_toa` | Attestation present for call | Offline conclusion |
+|---|---|---|
+| `false` | no | Expected: server outside TOA |
+| `true` | yes (disposition delivered / layers pass) | Positive evidence |
+| `true` | yes (disposition failed/refused/unavailable or failing layers) | **Negative evidence** (§14) |
+| `true` | no for a call that required attach | **Attestation gap** — distinct from “never supported TOA”; MUST NOT be collapsed into (1) |
+
+Verifiers MUST treat “attestation gap” as a different outcome class from “server never advertised TOA.”
+
+---
+
+## 14. Signed negative outcomes
+
+### 14.1 Mandatory attach on failure paths
+
+When a server advertises `attach: on_require` or `attach: always` and the client has advertised this extension (with `require: true` for `on_require`):
+
+- The server MUST attach a binding not only on successful delivery, but also when the tool result has `isError: true`, when delivery is graded as failed by the emitter, or when the server refuses the call under TOA policy.
+- Omitting a binding on those paths is non-conformant and MUST be recorded by the client as an attestation gap (§13.3) when negotiation said TOA was advertised.
+
+### 14.2 `disposition` on `toa/0.1` (additive)
+
+Documents MAY include signed field `disposition` (part of the signed claim set when present):
+
+| Value | Meaning |
+|---|---|
+| `delivered` | Emitter asserts delivery succeeded under its grading policy |
+| `failed` | Emitter asserts the call was attempted and delivery failed |
+| `refused` | Emitter asserts the call was refused (policy / auth / capability) before meaningful delivery |
+| `unavailable` | Emitter asserts the server/tool was unreachable or could not be invoked |
+
+If `disposition` is absent, verifiers MAY infer a coarse signal from layers (`functional=fail` / `reach=fail` etc.) but emitters that advertise this extension SHOULD set `disposition` explicitly on negative paths.
+
+A cryptographically valid attestation with `disposition` in (`failed`, `refused`, `unavailable`) or with failing required layers **is** negative evidence. It MUST NOT be treated as silence.
+
+### 14.3 Incentive alignment
+
+Servers that advertise TOA and then go silent on failure are distinguishable from non-TOA servers **only if** clients persist NegotiationRecords (§13). Spec-conformant servers do not rely on that distinction: they emit signed negative outcomes (§14.1–14.2) instead of silence.
 
 
 ### Evidence format summary (`toa/0.1`)
 
 Normative schema and signing rules live in the reference repository (`SPEC.md` + JSON Schema). Summary:
 
-- Signed claim fields (canonical JSON, sorted keys, separators `,` `:`): `spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`
+- Signed claim fields (canonical JSON, sorted keys, separators `,` `:`): `spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`
 - Envelope (not signed): `signature`, `payload_hash`, `public_key_id`
 - Layers: `reach`, `invoke`, `functional`, `shape`, `openapi_fidelity`, `compositional` with values `pass` | `fail` | `warn` (shape/openapi) | `n/a`
+- Optional `disposition`: `delivered` | `failed` | `refused` | `unavailable`
 - Signature: Ed25519; `payload_hash` is `sha256:` of the canonical signed claim bytes
 
 ## Rationale
 
 - **Separate evidence document from wire negotiation** so offline CI/gateways can verify without embedding MCP session state, while hosts that want negotiation get a real capability.
 - **Role pinning** prevents "valid signature" from being confused with "trusted outcome." Default accepted roles exclude `server`.
+- **NegotiationRecord + signed negatives** make absence interpretable and remove the incentive to go silent on failure.
 - **Vendor-prefixed id while incubating** follows SEP-2133; claiming `io.modelcontextprotocol/toa` unilaterally would be incorrect.
 - **Error code outside MCP-reserved range** avoids colliding with specification-owned `-32020..-32099`; polarity of `MissingRequiredClientCapability` is wrong for client-require failures.
 - **Primary target `2026-07-28`** matches Tasks / SEP-2575 negotiation channels (`server/discover` + per-request clientCapabilities).
 
-Alternatives considered and rejected for v1:
-
-- Docs-only post-conformance verify (no negotiation; already closed)
-- Core protocol change (too heavy; optional feature)
-- Server-only self-attestation as trust root (defeats the threat model)
-- Putting grades into `isError` (collapses layered delivery evidence into a boolean)
-
 ## Backward Compatibility
 
-No backward-incompatible core protocol changes. Extension is disabled unless advertised. Non-supporting peers interoperate on core MCP. Existing `toa/0.1` documents remain valid offline without this extension.
+No backward-incompatible core protocol changes. Extension is disabled unless advertised. Non-supporting peers interoperate on core MCP. Existing `toa/0.1` documents without `disposition` remain valid; the field is additive.
 
 ## Security Implications
 
@@ -369,25 +446,19 @@ No backward-incompatible core protocol changes. Extension is disabled unless adv
 - Reference fetch SSRF: `https:` fetches require allowlists/SSRF controls; hash mismatch must fail.
 - Key compromise: emitters rotate via `key_id`; verifiers pin keys.
 - Default `toa/0.1` profile must not require raw prompts or raw tool args/results to validate.
+- NegotiationRecords are client-local; treat them as integrity-sensitive logs if used for compliance conclusions.
 
 ## Reference implementation
 
 https://github.com/Carmel-Labs-Inc/toa
 
-Includes:
-
-- `toa/0.1` schema + Python/JS offline verify
-- Wire binding schema + `toa_ext` validate/attach
-- MCP Python SDK `ToaAttachExtension` (v2.1+, protocol `2026-07-28`)
-- Conformance scenarios T1–T10 + official SDK E2E (in-process and stdio subprocess): advertise, attach-on-require, no-attach without require, fail-closed, crypto edge cases
-
 ## Interest group
 
-Security Interest Group (auditability / tamper-evident records of what a tool call did). Tracked next to ATSA without conflating admission and outcome.
+Security Interest Group. Tracking issue: https://github.com/modelcontextprotocol/modelcontextprotocol/issues/3350
 
 ## Prior art / related
 
 - SEP-2133 Extensions
-- SEP-2663 Tasks Extension (negotiation / conformance quality bar)
-- SEP-2809 Attested Tool-Server Admission (complementary admission layer)
+- SEP-2663 Tasks Extension
+- SEP-2809 Attested Tool-Server Admission
 - Closed docs-only PR: modelcontextprotocol/conformance#479

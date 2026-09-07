@@ -127,3 +127,27 @@ Until an IG/WG association and sponsor exist, remain incubating on
 
 **Confidence:** high on process honesty; moderate on whether Security IG ultimately
 sponsors vs diverting to a new IG (community decision, not ours to pre-claim).
+
+---
+
+## 2026-09-07 — Absence / negative-outcome gap (issue #3350 feedback)
+
+### D5 — NegotiationRecord + signed negatives
+
+**Decision:** Close the “absence carries no information” gap before treating the
+extension as implementable for offline/post-hoc use:
+
+1. **NegotiationRecord (`toa-negotiation/0.1`)** — clients/gateways MUST persist
+   whether the server advertised `dev.agentstatus/toa` at capability exchange.
+2. **Signed negative outcomes** — servers with `attach: on_require|always` MUST
+   attach bindings on failure/refuse paths, not only happy path. Additive signed
+   `disposition` on `toa/0.1`: `delivered` | `failed` | `refused` | `unavailable`.
+3. Offline verifiers MUST distinguish `outside_toa` vs `attestation_gap`.
+
+**Rationale:** Without these, silence after an incident is ambiguous and incentives
+favor stopping attestation when things break. Feedback on
+modelcontextprotocol/modelcontextprotocol#3350.
+
+**Confidence:** high on the problem; high on the fix shape.
+
+**Issue reply:** draft only when author approves; do not post until then.

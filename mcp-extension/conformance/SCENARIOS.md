@@ -195,3 +195,44 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T8 hash mismatch | harness PASS |
 | T9 degradation | harness PASS |
 | T10 require emitter | harness PASS (inverted `requireEmitter` until `other_emitter` golden) |
+| T11 negotiation record | spec added 2026-09-07 — implement next |
+| T12 signed negative disposition | spec added 2026-09-07 — implement next |
+| T13 absence vs never-advertised | spec added 2026-09-07 — implement next |
+
+---
+
+## T11 — `toa-negotiation-record`
+
+**Intent:** Client/gateway persists NegotiationRecord at discover so offline absence is interpretable.
+
+**Checks:**
+
+1. After discover where server advertises TOA, a `toa-negotiation/0.1` record exists with `server_advertised_toa: true` and settings copy
+2. After discover where server does not advertise TOA, record has `server_advertised_toa: false`
+3. Schema validates against `toa-negotiation-0.1.schema.json`
+
+---
+
+## T12 — `toa-signed-negative-disposition`
+
+**Intent:** Failure paths emit signed evidence, not silence.
+
+**Setup:** Server `attach: on_require`; client `require: true`; tool returns `isError` / graded fail.
+
+**Checks:**
+
+1. Binding present on the negative path
+2. Document verifies; `disposition` is `failed` or `refused` or `unavailable` (or layers fail required minLayers)
+3. Must not be an attestation gap
+
+---
+
+## T13 — `toa-absence-vs-never-advertised`
+
+**Intent:** Offline verifier distinguishes “never advertised TOA” from “advertised but missing attestation.”
+
+**Checks:**
+
+1. With NegotiationRecord `server_advertised_toa: false` and no docs → class `outside_toa`
+2. With NegotiationRecord `server_advertised_toa: true` and no doc for a required call → class `attestation_gap`
+3. Those classes MUST NOT be equal

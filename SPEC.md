@@ -10,9 +10,20 @@ AgentStatus continuous monitoring and emit APIs remain proprietary. This reposit
 
 These fields are covered by the Ed25519 signature (canonical JSON: UTF-8, sorted keys, separators `,` `:`):
 
-`spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`
+`spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`
 
 Envelope (not signed): `signature`, `payload_hash`, `public_key_id`
+
+### Disposition (optional, signed when present)
+
+| Value | Meaning |
+|---|---|
+| `delivered` | Delivery succeeded under the emitter’s grading policy |
+| `failed` | Call attempted; delivery failed |
+| `refused` | Refused before meaningful delivery (policy / auth / capability) |
+| `unavailable` | Unreachable / could not invoke |
+
+Emitters implementing MCP extension `dev.agentstatus/toa` SHOULD set `disposition` explicitly on negative paths so offline verifiers do not confuse failure with silence.
 
 ## Layers
 

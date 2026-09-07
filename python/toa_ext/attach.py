@@ -48,9 +48,10 @@ def build_claim(
     outcome_grade: Optional[str] = None,
     business_outcome_ok: Optional[bool] = None,
     reasons: Optional[Sequence[str]] = None,
+    disposition: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Unsigned claim fields for `toa/0.1` (ready for sign_document)."""
-    return {
+    claim: Dict[str, Any] = {
         "spec": TOA_SPEC,
         "toa_id": new_toa_id(),
         "tool": {
@@ -71,6 +72,9 @@ def build_claim(
             "key_id": emitter_key_id,
         },
     }
+    if disposition is not None:
+        claim["disposition"] = disposition
+    return claim
 
 
 def embedded_binding(
