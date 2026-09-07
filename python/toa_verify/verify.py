@@ -1,14 +1,19 @@
 """
 Verify Tool Outcome Attestation documents (toa/0.1).
 
-Signature is Ed25519 over canonical JSON of the signed claim fields
-(sorted keys, no whitespace). Envelope fields signature / payload_hash /
-public_key_id are not part of the signed body.
+Signature is over canonical JSON of the signed claim fields (sorted keys, no
+whitespace). Envelope fields signature / payload_hash / public_key_id / alg are
+not part of the signed body.
+
+`alg` defaults to Ed25519 when absent (backward compatible). Unknown algorithms
+fail closed with unsupported_algorithm. Optional signed `args_hash` binds input
+digests when present; verifiers MAY require it.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -16,6 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 
 TOA_SPEC = "toa/0.1"
+DEFAULT_ALG = "Ed25519"
+SUPPORTED_ALGS = frozenset({DEFAULT_ALG})
+HASH_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 
 SIGNED_KEYS = (
     "spec",
@@ -29,6 +37,7 @@ SIGNED_KEYS = (
     "reasons",
     "emitter",
     "disposition",
+    "args_hash",
 )
 
 KeyMaterial = Union[str, bytes, Mapping[str, Any], Path]
@@ -40,6 +49,22 @@ def canonical_json(payload: Mapping[str, Any]) -> bytes:
 
 def claim_for_signing(document: Mapping[str, Any]) -> Dict[str, Any]:
     return {k: document[k] for k in SIGNED_KEYS if k in document}
+
+
+def resolve_alg(document: Mapping[str, Any]) -> str:
+    """Envelope alg; absent means Ed25519 for toa/0.1 backward compatibility."""
+    raw = document.get("alg")
+    if raw is None or raw == "":
+        return DEFAULT_ALG
+    if not isinstance(raw, str):
+        return ""
+    return raw
+
+
+def args_hash_for(arguments: Mapping[str, Any]) -> str:
+    """sha256: hex of canonical JSON of the tool arguments object."""
+    digest = hashlib.sha256(canonical_json(dict(arguments))).hexdigest()
+    return f"sha256:{digest}"
 
 
 def _load_public_key_bytes(key: KeyMaterial) -> bytes:
@@ -123,12 +148,18 @@ def verify_document(
     require_emitter: Optional[str] = None,
     max_age_seconds: Optional[int] = None,
     now: Optional[datetime] = None,
+    require_args_hash: bool = False,
+    expected_args_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Verify a TOA document.
 
     Returns dict with keys: valid (bool), reason (str), and claim fields on success.
     When max_age_seconds is set, observed_at must be within that window of now (UTC).
+
+    args_hash rules:
+    - If present on the document, MUST match HASH_RE; if expected_args_hash is set, MUST equal it.
+    - If require_args_hash and absent, fail with missing_args_hash.
     """
     if not isinstance(document, Mapping):
         return {"valid": False, "reason": "not_an_object"}
@@ -140,6 +171,13 @@ def verify_document(
     if not signature or not isinstance(signature, str):
         return {"valid": False, "reason": "missing_signature"}
 
+    alg = resolve_alg(document)
+    if alg not in SUPPORTED_ALGS:
+        return {
+            "valid": False,
+            "reason": f"unsupported_algorithm:{alg or 'invalid'}",
+        }
+
     body = claim_for_signing(document)
     emitter = body.get("emitter") if isinstance(body.get("emitter"), dict) else {}
     if require_emitter and emitter.get("name") != require_emitter:
@@ -148,6 +186,21 @@ def verify_document(
             "reason": f"emitter_mismatch:{emitter.get('name')}",
             "claim": body,
         }
+
+    args_hash = body.get("args_hash")
+    if args_hash is not None:
+        if not isinstance(args_hash, str) or not HASH_RE.match(args_hash):
+            return {"valid": False, "reason": "invalid_args_hash", "claim": body}
+        if expected_args_hash is not None and args_hash != expected_args_hash:
+            return {
+                "valid": False,
+                "reason": "args_hash_mismatch",
+                "claim": body,
+                "got": args_hash,
+                "expected": expected_args_hash,
+            }
+    elif require_args_hash or expected_args_hash is not None:
+        return {"valid": False, "reason": "missing_args_hash", "claim": body}
 
     key_material: KeyMaterial
     if public_key is not None:
@@ -162,6 +215,7 @@ def verify_document(
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+        # Only Ed25519 is implemented today; resolve_alg already gated others.
         pub = Ed25519PublicKey.from_public_bytes(_load_public_key_bytes(key_material))
         pub.verify(base64.b64decode(signature), canonical_json(body))
     except InvalidSignature:
@@ -201,5 +255,7 @@ def verify_document(
         "observed_at": body.get("observed_at"),
         "business_outcome_ok": body.get("business_outcome_ok"),
         "outcome_grade": body.get("outcome_grade"),
+        "args_hash": body.get("args_hash"),
+        "alg": alg,
         "public_key_id": document.get("public_key_id") or emitter.get("key_id"),
     }

@@ -239,6 +239,26 @@ def _stub_validate_binding(
                 backend=sig.backend,
             )
 
+    args_hash = document.get("args_hash")
+    require_args = bool(getattr(client_settings, "require_args_hash", False))
+    expected_args = getattr(client_settings, "expected_args_hash", None)
+    if args_hash is not None:
+        if not isinstance(args_hash, str) or not args_hash.startswith("sha256:"):
+            return ValidationResult(
+                valid=False, reason="args_hash", detail="invalid_args_hash", backend=sig.backend
+            )
+        if expected_args is not None and args_hash != expected_args:
+            return ValidationResult(
+                valid=False,
+                reason="args_hash",
+                detail="args_hash_mismatch",
+                backend=sig.backend,
+            )
+    elif require_args or expected_args is not None:
+        return ValidationResult(
+            valid=False, reason="args_hash", detail="missing_args_hash", backend=sig.backend
+        )
+
     if tool_name is not None:
         tool = document.get("tool") if isinstance(document.get("tool"), Mapping) else {}
         if tool.get("name") != tool_name:
@@ -275,6 +295,8 @@ def _try_toa_ext_validate(
         min_layers=dict(client_settings.min_layers)
         if client_settings.min_layers is not None
         else None,
+        require_args_hash=bool(getattr(client_settings, "require_args_hash", False)),
+        expected_args_hash=getattr(client_settings, "expected_args_hash", None),
     )
     try:
         raw = ext_validate(

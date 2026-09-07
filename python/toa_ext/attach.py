@@ -49,6 +49,7 @@ def build_claim(
     business_outcome_ok: Optional[bool] = None,
     reasons: Optional[Sequence[str]] = None,
     disposition: Optional[str] = None,
+    args_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Unsigned claim fields for `toa/0.1` (ready for sign_document)."""
     claim: Dict[str, Any] = {
@@ -74,6 +75,8 @@ def build_claim(
     }
     if disposition is not None:
         claim["disposition"] = disposition
+    if args_hash is not None:
+        claim["args_hash"] = args_hash
     return claim
 
 

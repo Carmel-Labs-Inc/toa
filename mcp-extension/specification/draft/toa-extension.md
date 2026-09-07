@@ -74,6 +74,7 @@ When a client advertises `dev.agentstatus/toa`, the capability value MUST be a J
 | `requireEmitter` | string or null | no | `null` | If set, `toa.emitter.name` MUST equal this value |
 | `maxAgeSeconds` | number or null | no | `604800` | If set, `observed_at` MUST be within this many seconds of validation time |
 | `minLayers` | object | no | see below | Minimum layer outcomes required |
+| `requireArgsHash` | boolean | no | `false` | If `true`, fail closed unless the document includes a valid `args_hash` |
 
 Default `minLayers` when `require` is `true`:
 
@@ -210,12 +211,14 @@ When validating a binding against client settings, implementations MUST:
 
 1. Parse `AttestationBinding` and resolve to a `toa/0.1` document (embed or fetch/store).
 2. Verify `spec === "toa/0.1"`.
-3. Verify Ed25519 signature per `toa/0.1` SPEC (canonical JSON over signed fields).
-4. Verify `emitter_role` ∈ `acceptedEmitterRoles`.
-5. If `requireEmitter` is set, verify `document.emitter.name === requireEmitter`.
-6. If `maxAgeSeconds` is set, verify `observed_at` age ≤ `maxAgeSeconds`.
-7. For each entry in `minLayers`, verify layer outcome satisfies §5.1 comparison rules.
-8. If `mode === reference`, verify `payload_hash` equals `document.payload_hash`.
+3. Resolve envelope `alg` (absent means `Ed25519`); if unsupported, fail (`unsupported_algorithm`).
+4. Verify signature per `toa/0.1` SPEC for that algorithm (canonical JSON over signed fields).
+5. Verify `emitter_role` ∈ `acceptedEmitterRoles`.
+6. If `requireEmitter` is set, verify `document.emitter.name === requireEmitter`.
+7. If `maxAgeSeconds` is set, verify `observed_at` age ≤ `maxAgeSeconds`.
+8. For each entry in `minLayers`, verify layer outcome satisfies §5.1 comparison rules.
+9. If `mode === reference`, verify `payload_hash` equals `document.payload_hash`.
+10. If `args_hash` is present, verify format (`sha256:` + 64 hex). If `requireArgsHash` is true, `args_hash` MUST be present. If the client supplies an expected args digest for this call, it MUST equal `args_hash`.
 
 Any failed step MUST treat the binding as invalid.
 
@@ -273,7 +276,7 @@ When a server must fail closed under §9.3 / §5.2 (`attach: on_require` or `alw
 `data` MUST include:
 
 - `extensionId`: `"dev.agentstatus/toa"`
-- `reason`: one of `missing_binding`, `invalid_signature`, `emitter_role`, `emitter_name`, `expired`, `min_layers`, `hash_mismatch`, `spec_mismatch`, `uri_scheme`, `fetch_rejected`
+- `reason`: one of `missing_binding`, `invalid_signature`, `emitter_role`, `emitter_name`, `expired`, `min_layers`, `hash_mismatch`, `spec_mismatch`, `uri_scheme`, `fetch_rejected`, `args_hash`, `unsupported_algorithm`
 
 Clients that fail closed locally after receiving a successful core result with missing/invalid binding under `require: true` MUST treat the call as failed. If they surface that failure in a JSON-RPC-shaped structure, they SHOULD use the same code, name, and `data` shape; that local error MUST NOT be presented as a peer JSON-RPC response.
 
@@ -287,11 +290,13 @@ If a future MCP SEP allocates a core or official-extension error code for “req
 
 Implementations SHOULD prefer `reference` mode when documents would enlarge results or risk sensitive context. Attestations MUST NOT require raw prompts or raw tool arguments/results to validate under the default `toa/0.1` profile.
 
+Optional signed `args_hash` MAY bind a digest of arguments without embedding the raw args. Clients that need stronger anti-substitution guarantees SHOULD set `requireArgsHash: true` and recompute the digest locally.
+
 ---
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios in [`../../conformance/SCENARIOS.md`](../../conformance/SCENARIOS.md), including absence / negative-outcome scenarios T11–T13.
+A claim of conformance to this draft MUST pass the scenarios in [`../../conformance/SCENARIOS.md`](../../conformance/SCENARIOS.md), including absence / negative-outcome scenarios T11–T13 and args_hash scenarios T14–T15.
 
 ---
 

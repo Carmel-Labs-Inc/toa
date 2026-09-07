@@ -631,6 +631,186 @@ def scenario_t13_absence_vs_never_advertised() -> ScenarioResult:
     )
 
 
+def scenario_t14_optional_args_hash() -> ScenarioResult:
+    """T14 — optional args_hash present and matches when verified against call args."""
+    sid, name = "T14", "toa-optional-args-hash"
+    from pathlib import Path
+
+    from toa_ext.attach import build_claim, embedded_binding
+    from toa_verify import args_hash_for, sign_document
+
+    priv_path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "keys"
+        / "toa-conformance-test-v1.private.json"
+    )
+    if not priv_path.is_file():
+        return _skip(sid, name, "missing_private_key", detail=str(priv_path))
+    key = _public_key_material()
+    if key is None:
+        return _skip(sid, name, "missing_public_key")
+
+    call_args = {"text": "hello-t14"}
+    digest = args_hash_for(call_args)
+
+    def factory(tool: str, args: Mapping[str, Any], _client: ClientToaSettings) -> Optional[Dict[str, Any]]:
+        claim = build_claim(
+            tool_name=tool,
+            server_id="toa-conformance-fake",
+            decision_id=f"args-{tool}",
+            agent_id="00000000-0000-0000-0000-0000000000c1",
+            layers={
+                "reach": "pass",
+                "invoke": "pass",
+                "functional": "pass",
+                "shape": "n/a",
+                "openapi_fidelity": "n/a",
+                "compositional": "n/a",
+            },
+            emitter_name=CONFORMANCE_EMITTER_NAME,
+            emitter_key_id="test-v1",
+            reasons=["t14-args-hash"],
+            disposition="delivered",
+            args_hash=args_hash_for(dict(args)),
+        )
+        doc = sign_document(claim, private_key=priv_path, public_key_id="test-v1")
+        return embedded_binding(doc, emitter_role="third_party")
+
+    server = FakeMcpServer(
+        toa=ServerToaSettings(attach="on_require"),
+        binding_factory=factory,
+    )
+    client = FakeMcpClient(
+        toa=ClientToaSettings(
+            require=True,
+            accepted_emitter_roles=["third_party"],
+            require_emitter=CONFORMANCE_EMITTER_NAME,
+            require_args_hash=False,
+            expected_args_hash=digest,
+        )
+    )
+    client.connect(server)
+    raw = server.call_tool("echo", call_args)
+    binding = (raw._meta or {}).get(EXTENSION_ID)
+    if binding is None:
+        return _fail(sid, name, "missing_binding")
+    doc = binding.get("document") if isinstance(binding, Mapping) else None
+    if not isinstance(doc, Mapping) or doc.get("args_hash") != digest:
+        return _fail(sid, name, "args_hash_missing_or_wrong", detail=str((doc or {}).get("args_hash")))
+
+    vr = validate_binding(
+        binding,
+        client_settings=client.toa,
+        tool_name="echo",
+        public_key=key,
+    )
+    if _crypto_blocked(vr.reason):
+        return _skip(sid, name, vr.reason, detail=vr.detail)
+    if not vr.valid:
+        return _fail(sid, name, vr.reason, detail=vr.detail)
+    return _pass(sid, name, checks={"args_hash": "PASS", "validate": "PASS"})
+
+
+def scenario_t15_require_args_hash() -> ScenarioResult:
+    """T15 — requireArgsHash fails closed when args_hash absent; passes when present."""
+    sid, name = "T15", "toa-require-args-hash"
+    from pathlib import Path
+
+    from toa_ext.attach import build_claim, embedded_binding
+    from toa_verify import args_hash_for, sign_document
+
+    priv_path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "keys"
+        / "toa-conformance-test-v1.private.json"
+    )
+    if not priv_path.is_file():
+        return _skip(sid, name, "missing_private_key", detail=str(priv_path))
+    key = _public_key_material()
+    if key is None:
+        return _skip(sid, name, "missing_public_key")
+
+    layers = {
+        "reach": "pass",
+        "invoke": "pass",
+        "functional": "pass",
+        "shape": "n/a",
+        "openapi_fidelity": "n/a",
+        "compositional": "n/a",
+    }
+    settings = ClientToaSettings(
+        require=True,
+        accepted_emitter_roles=["third_party"],
+        require_emitter=CONFORMANCE_EMITTER_NAME,
+        require_args_hash=True,
+    )
+
+    # Missing args_hash → fail
+    claim_missing = build_claim(
+        tool_name="echo",
+        server_id="toa-conformance-fake",
+        decision_id="t15-missing",
+        agent_id="00000000-0000-0000-0000-0000000000c1",
+        layers=layers,
+        emitter_name=CONFORMANCE_EMITTER_NAME,
+        emitter_key_id="test-v1",
+        reasons=["t15-missing"],
+        disposition="delivered",
+    )
+    doc_missing = sign_document(claim_missing, private_key=priv_path, public_key_id="test-v1")
+    vr_missing = validate_binding(
+        embedded_binding(doc_missing, emitter_role="third_party"),
+        client_settings=settings,
+        tool_name="echo",
+        public_key=key,
+    )
+    if _crypto_blocked(vr_missing.reason):
+        return _skip(sid, name, vr_missing.reason, detail=vr_missing.detail)
+    if vr_missing.valid or vr_missing.reason != "args_hash":
+        return _fail(
+            sid,
+            name,
+            "expected_args_hash_fail",
+            detail=f"got valid={vr_missing.valid} reason={vr_missing.reason}",
+        )
+
+    # Present args_hash → pass
+    digest = args_hash_for({"text": "t15"})
+    claim_ok = build_claim(
+        tool_name="echo",
+        server_id="toa-conformance-fake",
+        decision_id="t15-ok",
+        agent_id="00000000-0000-0000-0000-0000000000c1",
+        layers=layers,
+        emitter_name=CONFORMANCE_EMITTER_NAME,
+        emitter_key_id="test-v1",
+        reasons=["t15-ok"],
+        disposition="delivered",
+        args_hash=digest,
+    )
+    doc_ok = sign_document(claim_ok, private_key=priv_path, public_key_id="test-v1")
+    vr_ok = validate_binding(
+        embedded_binding(doc_ok, emitter_role="third_party"),
+        client_settings=ClientToaSettings(
+            require=True,
+            accepted_emitter_roles=["third_party"],
+            require_emitter=CONFORMANCE_EMITTER_NAME,
+            require_args_hash=True,
+            expected_args_hash=digest,
+        ),
+        tool_name="echo",
+        public_key=key,
+    )
+    if _crypto_blocked(vr_ok.reason):
+        return _skip(sid, name, vr_ok.reason, detail=vr_ok.detail)
+    if not vr_ok.valid:
+        return _fail(sid, name, vr_ok.reason, detail=vr_ok.detail)
+
+    return _pass(sid, name, checks={"missing": "PASS", "present": "PASS"})
+
+
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T1", "toa-capability-advertisement", scenario_t1_advertisement),
     ("T2", "toa-attach-on-require", scenario_t2_attach_on_require),
@@ -645,4 +825,6 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T11", "toa-negotiation-record", scenario_t11_negotiation_record),
     ("T12", "toa-signed-negative-disposition", scenario_t12_signed_negative_disposition),
     ("T13", "toa-absence-vs-never-advertised", scenario_t13_absence_vs_never_advertised),
+    ("T14", "toa-optional-args-hash", scenario_t14_optional_args_hash),
+    ("T15", "toa-require-args-hash", scenario_t15_require_args_hash),
 ]

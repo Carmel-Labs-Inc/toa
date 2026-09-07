@@ -1,14 +1,18 @@
 /**
  * Verify Tool Outcome Attestation documents (toa/0.1).
- * Ed25519 over canonical JSON of signed claim fields.
+ * Signature over canonical JSON of signed claim fields.
+ * Envelope alg defaults to Ed25519 when absent (backward compatible).
  */
 
-import { createPublicKey, verify } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const TOA_SPEC = "toa/0.1";
+export const DEFAULT_ALG = "Ed25519";
+export const SUPPORTED_ALGS = new Set([DEFAULT_ALG]);
+export const HASH_RE = /^sha256:[a-f0-9]{64}$/;
 
 export const SIGNED_KEYS = [
   "spec",
@@ -22,6 +26,7 @@ export const SIGNED_KEYS = [
   "reasons",
   "emitter",
   "disposition",
+  "args_hash",
 ];
 
 export function canonicalJson(payload) {
@@ -52,6 +57,20 @@ export function claimForSigning(document) {
     }
   }
   return out;
+}
+
+export function resolveAlg(document) {
+  const raw = document?.alg;
+  if (raw == null || raw === "") return DEFAULT_ALG;
+  if (typeof raw !== "string") return "";
+  return raw;
+}
+
+export function argsHashFor(argumentsObj) {
+  const digest = createHash("sha256")
+    .update(canonicalJsonSorted(argumentsObj || {}))
+    .digest("hex");
+  return `sha256:${digest}`;
 }
 
 function loadPublicKeyRaw(keyMaterial) {
@@ -117,7 +136,7 @@ export function parseObservedAt(value) {
 
 /**
  * @param {object} document
- * @param {{ publicKey?: any, requireEmitter?: string, maxAgeSeconds?: number, now?: Date }} [opts]
+ * @param {{ publicKey?: any, requireEmitter?: string, maxAgeSeconds?: number, now?: Date, requireArgsHash?: boolean, expectedArgsHash?: string }} [opts]
  */
 export function verifyDocument(document, opts = {}) {
   if (!document || typeof document !== "object") {
@@ -130,6 +149,11 @@ export function verifyDocument(document, opts = {}) {
     return { valid: false, reason: "missing_signature" };
   }
 
+  const alg = resolveAlg(document);
+  if (!SUPPORTED_ALGS.has(alg)) {
+    return { valid: false, reason: `unsupported_algorithm:${alg || "invalid"}` };
+  }
+
   const body = claimForSigning(document);
   const emitter = body.emitter && typeof body.emitter === "object" ? body.emitter : {};
   if (opts.requireEmitter && emitter.name !== opts.requireEmitter) {
@@ -138,6 +162,24 @@ export function verifyDocument(document, opts = {}) {
       reason: `emitter_mismatch:${emitter.name}`,
       claim: body,
     };
+  }
+
+  const argsHash = body.args_hash;
+  if (argsHash != null) {
+    if (typeof argsHash !== "string" || !HASH_RE.test(argsHash)) {
+      return { valid: false, reason: "invalid_args_hash", claim: body };
+    }
+    if (opts.expectedArgsHash != null && argsHash !== opts.expectedArgsHash) {
+      return {
+        valid: false,
+        reason: "args_hash_mismatch",
+        claim: body,
+        got: argsHash,
+        expected: opts.expectedArgsHash,
+      };
+    }
+  } else if (opts.requireArgsHash || opts.expectedArgsHash != null) {
+    return { valid: false, reason: "missing_args_hash", claim: body };
   }
 
   let keyRaw;
@@ -198,6 +240,8 @@ export function verifyDocument(document, opts = {}) {
     observed_at: body.observed_at,
     business_outcome_ok: body.business_outcome_ok,
     outcome_grade: body.outcome_grade,
+    args_hash: body.args_hash,
+    alg,
     public_key_id: document.public_key_id || emitter.key_id,
   };
 }

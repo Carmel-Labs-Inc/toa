@@ -44,6 +44,8 @@ class ClientSettings:
     require_emitter: Optional[str] = None
     max_age_seconds: Optional[int] = 604800
     min_layers: Optional[Mapping[str, str]] = None
+    require_args_hash: bool = False
+    expected_args_hash: Optional[str] = None
 
     def effective_min_layers(self) -> Mapping[str, str]:
         if self.min_layers is not None:
@@ -220,9 +222,18 @@ def validate_binding(
     # §8.3 signature (reuse toa_verify)
     if public_key is None:
         return _fail("invalid_signature", detail="no_public_key_configured")
-    verify = verify_document(document, public_key=public_key)
+    verify = verify_document(
+        document,
+        public_key=public_key,
+        require_args_hash=cfg.require_args_hash,
+        expected_args_hash=cfg.expected_args_hash,
+    )
     if not verify.get("valid"):
         reason = verify.get("reason") or "invalid_signature"
+        if reason == "missing_args_hash" or reason == "invalid_args_hash" or reason == "args_hash_mismatch":
+            return _fail("args_hash", verify_reason=reason)
+        if isinstance(reason, str) and reason.startswith("unsupported_algorithm"):
+            return _fail("unsupported_algorithm", verify_reason=reason)
         if reason == "invalid_signature" or str(reason).startswith("verify_error"):
             return _fail("invalid_signature", verify_reason=reason)
         if str(reason).startswith("unsupported_spec"):

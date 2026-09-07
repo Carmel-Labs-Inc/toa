@@ -148,6 +148,13 @@ extension as implementable for offline/post-hoc use:
 `classify_absence`), `ToaAttachExtension` attaches on `is_error` with
 `disposition=failed`, harness T11–T13 PASS, SDK E2E negative-path test green.
 
+**Follow-on (2026-09-07 evening):** optional signed `args_hash` + client
+`requireArgsHash`; envelope `alg` with default Ed25519 when absent (non-breaking).
+Only Ed25519 verify is implemented today; unknown algs fail closed.
+
+**Path-complete (same day):** SDK attach hashes call args; client parses
+`requireArgsHash`; harness T14–T15 PASS; JS node tests for hash/alg.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

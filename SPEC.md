@@ -8,11 +8,18 @@ AgentStatus continuous monitoring and emit APIs remain proprietary. This reposit
 
 ## Signed claim fields
 
-These fields are covered by the Ed25519 signature (canonical JSON: UTF-8, sorted keys, separators `,` `:`):
+These fields are covered by the signature (canonical JSON: UTF-8, sorted keys, separators `,` `:`):
 
-`spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`
+`spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`, `args_hash`
 
-Envelope (not signed): `signature`, `payload_hash`, `public_key_id`
+Envelope (not signed): `signature`, `payload_hash`, `public_key_id`, `alg`
+
+### Algorithm (`alg`, envelope)
+
+- Absent `alg` means **Ed25519** (backward compatible with existing `toa/0.1` documents).
+- Emitters SHOULD set `alg: "Ed25519"` on new documents.
+- Verifiers MUST fail closed on unknown algorithms (`unsupported_algorithm`).
+- Only Ed25519 is required to be implemented for `toa/0.1`. Additional suites are a later revision or key-discovery concern, not a break of existing evidence.
 
 ### Disposition (optional, signed when present)
 
@@ -24,6 +31,14 @@ Envelope (not signed): `signature`, `payload_hash`, `public_key_id`
 | `unavailable` | Unreachable / could not invoke |
 
 Emitters implementing MCP extension `dev.agentstatus/toa` SHOULD set `disposition` explicitly on negative paths so offline verifiers do not confuse failure with silence.
+
+### `args_hash` (optional, signed when present)
+
+Commitment to tool arguments: `sha256:` + hex of canonical JSON of the arguments object.
+
+- When present, verifiers MUST validate format and, if they know the call args, MUST check equality.
+- When absent, requiring it is a **verifier policy** decision (`require_args_hash` / client `requireArgsHash`), not a format default.
+- Raw arguments MUST NOT be required in the document (privacy).
 
 ## Layers
 
