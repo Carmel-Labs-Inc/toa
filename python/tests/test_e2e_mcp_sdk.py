@@ -26,6 +26,7 @@ if tuple(int(p) for p in _mcp_ver.split(".")[:2]) < (2, 1):
 from mcp import Client, StdioServerParameters
 from mcp.client.extension import advertise
 from mcp.server.mcpserver import MCPServer
+from mcp.types import CallToolResult, TextContent
 
 from toa_ext import EXTENSION_ID, ClientSettings, enforce_client_require
 from toa_ext.mcp_sdk import (
@@ -33,6 +34,7 @@ from toa_ext.mcp_sdk import (
     default_conformance_private_key,
     default_conformance_public_key,
 )
+from toa_ext.negotiation import ABSENCE_NEGATIVE, classify_absence, negotiation_from_initialize
 
 PRIV = default_conformance_private_key()
 PUB = default_conformance_public_key()
@@ -104,6 +106,7 @@ async def test_e2e_attach_when_client_requires():
         assert binding["mode"] == "embedded"
         assert binding["emitter_role"] == "third_party"
         assert binding["document"]["tool"]["name"] == "echo"
+        assert binding["document"]["disposition"] == "delivered"
         enforced = _enforce(result)
         assert enforced["ok"] is True, enforced
 
@@ -126,6 +129,76 @@ async def test_e2e_fail_closed_when_require_but_server_never_attaches():
         enforced = _enforce(result, require_emitter=None)
         assert enforced["ok"] is False
         assert enforced["error"]["data"]["reason"] == "missing_binding"
+
+
+@pytest.mark.asyncio
+async def test_e2e_attach_signed_negative_on_is_error():
+    """§14: advertised attach MUST emit signed disposition on failure paths."""
+    extensions = [
+        ToaAttachExtension(
+            private_key=PRIV,
+            public_key_id="test-v1",
+            attach="on_require",
+            supported_emitter_roles=["third_party"],
+        )
+    ]
+    server = MCPServer("toa-sdk-e2e-neg", extensions=extensions)
+
+    @server.tool()
+    def boom() -> CallToolResult:
+        return CallToolResult(
+            content=[TextContent(type="text", text="tool failed")],
+            isError=True,
+        )
+
+    client_ext = advertise(
+        EXTENSION_ID,
+        {
+            "require": True,
+            "acceptedEmitterRoles": ["third_party"],
+            "requireEmitter": "toa-conformance",
+            # Allow functional fail so require enforcement is about presence+crypto.
+            "minLayers": {"reach": "pass", "invoke": "pass"},
+        },
+    )
+    async with Client(server, extensions=[client_ext]) as client:
+        result = await client.call_tool("boom", {})
+        assert result.is_error is True
+        assert result.meta and EXTENSION_ID in result.meta
+        binding = result.meta[EXTENSION_ID]
+        doc = binding["document"]
+        assert doc["disposition"] == "failed"
+        assert doc["layers"]["functional"] == "fail"
+
+        enforced = enforce_client_require(
+            {"content": [], "_meta": dict(result.meta or {})},
+            client_settings=ClientSettings(
+                require=True,
+                accepted_emitter_roles=["third_party"],
+                require_emitter="toa-conformance",
+                min_layers={"reach": "pass", "invoke": "pass"},
+            ),
+            public_key=PUB,
+            expected_tool_name="boom",
+        )
+        assert enforced["ok"] is True, enforced
+
+        # Synthetic NegotiationRecord as if discover advertised TOA.
+        neg_class = classify_absence(
+            negotiation=negotiation_from_initialize(
+                {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {
+                        "extensions": {EXTENSION_ID: {"attach": "on_require"}}
+                    },
+                },
+                server_id="toa-sdk-e2e",
+            ),
+            attestation_present=True,
+            document=doc,
+            attach_expected=True,
+        )
+        assert neg_class["class"] == ABSENCE_NEGATIVE
 
 
 @pytest.mark.asyncio

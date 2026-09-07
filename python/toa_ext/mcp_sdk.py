@@ -3,7 +3,7 @@ MCP Python SDK reference extension for `dev.agentstatus/toa`.
 
 Uses the official `mcp` package (v2+) Extension intercept to attach signed
 AttestationBinding objects onto tools/call results when client require /
-server attach policy says so.
+server attach policy says so — including failure / isError paths (§14).
 """
 
 from __future__ import annotations
@@ -33,6 +33,15 @@ PASS_LAYERS = {
     "compositional": "n/a",
 }
 
+FAIL_LAYERS = {
+    "reach": "pass",
+    "invoke": "pass",
+    "functional": "fail",
+    "shape": "n/a",
+    "openapi_fidelity": "n/a",
+    "compositional": "n/a",
+}
+
 
 def _client_toa_settings(ctx: ServerRequestContext[Any, Any]) -> Optional[ClientSettings]:
     meta = ctx.meta or {}
@@ -57,6 +66,18 @@ def _client_toa_settings(ctx: ServerRequestContext[Any, Any]) -> Optional[Client
     )
 
 
+def _result_is_negative(result: CallToolResult) -> bool:
+    if bool(getattr(result, "is_error", False) or getattr(result, "isError", False)):
+        return True
+    # Soft-fail style structured content used in conformance / demos.
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
+    if isinstance(structured, Mapping) and structured.get("functional") == "fail":
+        return True
+    return False
+
+
 class ToaAttachExtension(Extension):
     """
     Reference server extension: advertise TOA and attach embedded bindings.
@@ -64,6 +85,9 @@ class ToaAttachExtension(Extension):
     For conformance / E2E. Production AgentStatus emit stays on the product API;
     this signs with a caller-supplied private key (typically the conformance
     test key).
+
+    When attach policy fires, MUST attach on success and on failure / isError
+    paths, with ``disposition`` set accordingly (§14).
     """
 
     identifier = EXTENSION_ID
@@ -81,6 +105,7 @@ class ToaAttachExtension(Extension):
         supported_emitter_roles: Optional[Sequence[str]] = None,
         agent_id: str = "00000000-0000-0000-0000-0000000000e2",
         layers: Optional[Mapping[str, str]] = None,
+        fail_layers: Optional[Mapping[str, str]] = None,
     ) -> None:
         self._private_key = private_key
         self._public_key_id = public_key_id
@@ -94,6 +119,7 @@ class ToaAttachExtension(Extension):
         )
         self._agent_id = agent_id
         self._layers = dict(layers or PASS_LAYERS)
+        self._fail_layers = dict(fail_layers or FAIL_LAYERS)
 
     def settings(self) -> dict[str, Any]:
         return {
@@ -115,16 +141,26 @@ class ToaAttachExtension(Extension):
         if not should_attach(server_attach=self._attach, client_settings=client):
             return result
 
+        negative = _result_is_negative(result)
+        disposition = "failed" if negative else "delivered"
+        layers = self._fail_layers if negative else self._layers
+        reasons = (
+            ["mcp-sdk-e2e-attach-negative"]
+            if negative
+            else ["mcp-sdk-e2e-attach"]
+        )
+
         claim = build_claim(
             tool_name=params.name,
             server_id=self._server_id,
             decision_id=f"e2e-{params.name}",
             agent_id=self._agent_id,
-            layers=self._layers,
+            layers=layers,
             emitter_name=self._emitter_name,
             emitter_version=self._emitter_version,
             emitter_key_id=self._public_key_id,
-            reasons=["mcp-sdk-e2e-attach"],
+            reasons=reasons,
+            disposition=disposition,
         )
         document = sign_document(
             claim,

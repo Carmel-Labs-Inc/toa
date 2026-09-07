@@ -144,6 +144,10 @@ extension as implementable for offline/post-hoc use:
    `disposition` on `toa/0.1`: `delivered` | `failed` | `refused` | `unavailable`.
 3. Offline verifiers MUST distinguish `outside_toa` vs `attestation_gap`.
 
+**Implementation (2026-09-07):** `toa_ext.negotiation` (`build_negotiation_record`,
+`classify_absence`), `ToaAttachExtension` attaches on `is_error` with
+`disposition=failed`, harness T11–T13 PASS, SDK E2E negative-path test green.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

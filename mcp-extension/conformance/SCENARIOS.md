@@ -195,9 +195,9 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T8 hash mismatch | harness PASS |
 | T9 degradation | harness PASS |
 | T10 require emitter | harness PASS (inverted `requireEmitter` until `other_emitter` golden) |
-| T11 negotiation record | spec added 2026-09-07 — implement next |
-| T12 signed negative disposition | spec added 2026-09-07 — implement next |
-| T13 absence vs never-advertised | spec added 2026-09-07 — implement next |
+| T11 negotiation record | harness PASS |
+| T12 signed negative disposition | harness PASS |
+| T13 absence vs never-advertised | harness PASS |
 
 ---
 

@@ -1,4 +1,4 @@
-"""T1–T10 scenario implementations (in-process fake MCP)."""
+"""T1–T13 scenario implementations (in-process fake MCP)."""
 
 from __future__ import annotations
 
@@ -408,6 +408,229 @@ def scenario_t10_require_emitter_name() -> ScenarioResult:
         return _fail(sid, name, "wrong_reason", detail=f"expected emitter_name got {vr.reason}")
     return _pass(sid, name, checks={"reason": "emitter_name", "mode": expected_detail})
 
+
+def scenario_t11_negotiation_record() -> ScenarioResult:
+    """T11 — client persists NegotiationRecord at discover."""
+    sid, name = "T11", "toa-negotiation-record"
+    from toa_ext.negotiation import (
+        NEGOTIATION_SPEC,
+        validate_negotiation_record,
+    )
+
+    # Advertised
+    server_yes = FakeMcpServer(toa=ServerToaSettings(attach="on_require"), advertise_toa=True)
+    client_yes = FakeMcpClient(
+        toa=ClientToaSettings(require=True, accepted_emitter_roles=["third_party"]),
+        server_id="srv-yes",
+    )
+    client_yes.connect(server_yes)
+    rec_yes = client_yes.negotiation_record
+    if rec_yes is None:
+        return _fail(sid, name, "missing_record_advertised")
+    shape = validate_negotiation_record(rec_yes)
+    if not shape.get("valid"):
+        return _fail(sid, name, "schema_invalid", detail=str(shape))
+    if rec_yes.get("spec") != NEGOTIATION_SPEC:
+        return _fail(sid, name, "spec_mismatch")
+    if rec_yes.get("server_advertised_toa") is not True:
+        return _fail(sid, name, "expected_advertised_true")
+    if not isinstance(rec_yes.get("server_settings"), dict):
+        return _fail(sid, name, "missing_server_settings_copy")
+    if rec_yes["server_settings"].get("attach") != "on_require":
+        return _fail(sid, name, "settings_copy_wrong")
+
+    # Not advertised
+    server_no = FakeMcpServer(advertise_toa=False)
+    client_no = FakeMcpClient(
+        toa=ClientToaSettings(require=False),
+        advertise_toa=False,
+        server_id="srv-no",
+    )
+    # Still record even when client does not advertise TOA.
+    init = server_no.initialize_result()
+    from toa_ext.negotiation import negotiation_from_initialize
+
+    rec_no = negotiation_from_initialize(init, server_id="srv-no")
+    shape_no = validate_negotiation_record(rec_no)
+    if not shape_no.get("valid"):
+        return _fail(sid, name, "schema_invalid_no", detail=str(shape_no))
+    if rec_no.get("server_advertised_toa") is not False:
+        return _fail(sid, name, "expected_advertised_false")
+
+    return _pass(
+        sid,
+        name,
+        checks={"advertised": "PASS", "never": "PASS", "schema": "PASS"},
+    )
+
+
+def scenario_t12_signed_negative_disposition() -> ScenarioResult:
+    """T12 — failure paths emit signed disposition, not silence."""
+    sid, name = "T12", "toa-signed-negative-disposition"
+    from pathlib import Path
+
+    from toa_ext.attach import build_claim, embedded_binding
+    from toa_ext.negotiation import (
+        ABSENCE_ATTESTATION_GAP,
+        ABSENCE_NEGATIVE,
+        classify_absence,
+        negotiation_from_initialize,
+    )
+    from toa_verify.sign import sign_document
+    from toa_verify.verify import verify_document
+
+    priv_path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "keys"
+        / "toa-conformance-test-v1.private.json"
+    )
+    if not priv_path.is_file():
+        return _skip(sid, name, "missing_private_key", detail=str(priv_path))
+    key = _public_key_material()
+    if key is None:
+        return _skip(sid, name, "missing_public_key")
+
+    fail_layers = {
+        "reach": "pass",
+        "invoke": "pass",
+        "functional": "fail",
+        "shape": "n/a",
+        "openapi_fidelity": "n/a",
+        "compositional": "n/a",
+    }
+
+    def factory(tool: str, _args: Mapping[str, Any], _client: ClientToaSettings) -> Optional[Dict[str, Any]]:
+        claim = build_claim(
+            tool_name=tool,
+            server_id="toa-conformance-fake",
+            decision_id=f"neg-{tool}",
+            agent_id="00000000-0000-0000-0000-0000000000c1",
+            layers=fail_layers,
+            emitter_name=CONFORMANCE_EMITTER_NAME,
+            emitter_key_id="test-v1",
+            reasons=["t12-signed-negative"],
+            disposition="failed",
+        )
+        doc = sign_document(claim, private_key=priv_path, public_key_id="test-v1")
+        return embedded_binding(doc, emitter_role="third_party")
+
+    server = FakeMcpServer(
+        toa=ServerToaSettings(attach="on_require", supported_emitter_roles=["third_party"]),
+        binding_factory=factory,
+    )
+    client = FakeMcpClient(
+        toa=ClientToaSettings(
+            require=True,
+            accepted_emitter_roles=["third_party"],
+            require_emitter=CONFORMANCE_EMITTER_NAME,
+            # Negative evidence: do not require functional=pass for this check.
+            min_layers={"reach": "pass", "invoke": "pass"},
+        ),
+        server_id="toa-conformance-fake",
+    )
+    init = client.connect(server)
+    raw = server.call_tool("soft_fail", {})
+    binding = (raw._meta or {}).get(EXTENSION_ID)
+    if binding is None:
+        return _fail(sid, name, "missing_binding", detail="silence on negative path")
+
+    doc = binding.get("document")
+    if not isinstance(doc, Mapping):
+        return _fail(sid, name, "missing_document")
+    if doc.get("disposition") not in ("failed", "refused", "unavailable"):
+        return _fail(sid, name, "missing_negative_disposition", detail=str(doc.get("disposition")))
+
+    vr = verify_document(doc, public_key=key, require_emitter=CONFORMANCE_EMITTER_NAME)
+    if not vr.get("valid"):
+        return _fail(sid, name, "verify_failed", detail=str(vr))
+
+    # Crypto+role binding validate (min_layers allow fail on functional)
+    pol = validate_binding(
+        binding,
+        client_settings=client.toa,
+        tool_name="soft_fail",
+        public_key=key,
+    )
+    if _crypto_blocked(pol.reason):
+        return _skip(sid, name, pol.reason, detail=pol.detail)
+    if not pol.valid:
+        return _fail(sid, name, pol.reason, detail=pol.detail)
+
+    neg = classify_absence(
+        negotiation=client.negotiation_record or negotiation_from_initialize(init, server_id="toa-conformance-fake"),
+        attestation_present=True,
+        document=doc,
+        attach_expected=True,
+    )
+    if neg.get("class") != ABSENCE_NEGATIVE:
+        return _fail(sid, name, "not_negative_evidence", detail=str(neg))
+    if neg.get("class") == ABSENCE_ATTESTATION_GAP:
+        return _fail(sid, name, "classified_as_gap")
+
+    return _pass(
+        sid,
+        name,
+        checks={"binding": "PASS", "disposition": "PASS", "verify": "PASS", "class": ABSENCE_NEGATIVE},
+    )
+
+
+def scenario_t13_absence_vs_never_advertised() -> ScenarioResult:
+    """T13 — outside_toa ≠ attestation_gap."""
+    sid, name = "T13", "toa-absence-vs-never-advertised"
+    from toa_ext.negotiation import (
+        ABSENCE_ATTESTATION_GAP,
+        ABSENCE_OUTSIDE_TOA,
+        classify_absence,
+        negotiation_from_initialize,
+    )
+
+    never = FakeMcpServer(advertise_toa=False)
+    init_never = never.initialize_result()
+    rec_never = negotiation_from_initialize(init_never, server_id="srv-never")
+    class_never = classify_absence(
+        negotiation=rec_never,
+        attestation_present=False,
+        document=None,
+        attach_expected=True,
+    )
+    if class_never.get("class") != ABSENCE_OUTSIDE_TOA:
+        return _fail(sid, name, "expected_outside_toa", detail=str(class_never))
+
+    advertised = FakeMcpServer(
+        toa=ServerToaSettings(attach="on_require"),
+        advertise_toa=True,
+        force_no_binding=True,
+    )
+    client = FakeMcpClient(
+        toa=ClientToaSettings(require=True, accepted_emitter_roles=["third_party"]),
+        server_id="srv-gap",
+    )
+    client.connect(advertised)
+    # Required call with no binding → gap
+    class_gap = classify_absence(
+        negotiation=client.negotiation_record,  # type: ignore[arg-type]
+        attestation_present=False,
+        document=None,
+        attach_expected=True,
+    )
+    if class_gap.get("class") != ABSENCE_ATTESTATION_GAP:
+        return _fail(sid, name, "expected_attestation_gap", detail=str(class_gap))
+
+    if class_never["class"] == class_gap["class"]:
+        return _fail(sid, name, "classes_collapsed")
+
+    return _pass(
+        sid,
+        name,
+        checks={
+            "outside_toa": "PASS",
+            "attestation_gap": "PASS",
+            "distinct": "PASS",
+        },
+    )
+
+
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T1", "toa-capability-advertisement", scenario_t1_advertisement),
     ("T2", "toa-attach-on-require", scenario_t2_attach_on_require),
@@ -419,4 +642,7 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T8", "toa-reference-hash-mismatch", scenario_t8_reference_hash_mismatch),
     ("T9", "toa-graceful-degradation", scenario_t9_graceful_degradation),
     ("T10", "toa-require-emitter-name", scenario_t10_require_emitter_name),
+    ("T11", "toa-negotiation-record", scenario_t11_negotiation_record),
+    ("T12", "toa-signed-negative-disposition", scenario_t12_signed_negative_disposition),
+    ("T13", "toa-absence-vs-never-advertised", scenario_t13_absence_vs_never_advertised),
 ]
