@@ -127,10 +127,13 @@ class FakeMcpClient:
         *,
         toa: Optional[ClientToaSettings] = None,
         advertise_toa: bool = True,
+        server_id: str = "toa-conformance-fake",
     ):
         self.toa = toa
         self.advertise_toa = advertise_toa and toa is not None
+        self.server_id = server_id
         self.server_capabilities: Dict[str, Any] = {}
+        self.negotiation_record: Optional[Dict[str, Any]] = None
 
     def client_capabilities(self) -> Dict[str, Any]:
         caps: Dict[str, Any] = {}
@@ -145,6 +148,17 @@ class FakeMcpClient:
             server.set_peer_client_settings(self.toa)
         else:
             server.set_peer_client_settings(None)
+        # §13: persist NegotiationRecord at capability exchange.
+        from toa_ext.negotiation import negotiation_from_initialize
+
+        client_cap = None
+        if self.toa is not None:
+            client_cap = self.toa.to_capability()
+        self.negotiation_record = negotiation_from_initialize(
+            init,
+            server_id=self.server_id,
+            client_settings=client_cap,
+        )
         return init
 
     def call_tool(

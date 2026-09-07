@@ -21,6 +21,7 @@ export const SIGNED_KEYS = [
   "business_outcome_ok",
   "reasons",
   "emitter",
+  "disposition",
 ];
 
 export function canonicalJson(payload) {
