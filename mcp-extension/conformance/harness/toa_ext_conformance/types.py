@@ -20,6 +20,8 @@ class ClientToaSettings:
     require_emitter: Optional[str] = None
     max_age_seconds: Optional[int] = 604800
     min_layers: Optional[Mapping[str, str]] = None
+    require_args_hash: bool = False
+    expected_args_hash: Optional[str] = None
 
     def to_capability(self) -> Dict[str, Any]:
         out: Dict[str, Any] = {
@@ -27,6 +29,7 @@ class ClientToaSettings:
             "acceptedEmitterRoles": list(self.accepted_emitter_roles),
             "requireEmitter": self.require_emitter,
             "maxAgeSeconds": self.max_age_seconds,
+            "requireArgsHash": self.require_args_hash,
         }
         if self.min_layers is not None:
             out["minLayers"] = dict(self.min_layers)

@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Mapping, Union
 
-from .verify import claim_for_signing, canonical_json
+from .verify import DEFAULT_ALG, claim_for_signing, canonical_json
 
 PrivateKeyMaterial = Union[str, bytes, Mapping[str, Any], Path]
 
@@ -59,14 +59,19 @@ def sign_document(
     *,
     private_key: PrivateKeyMaterial,
     public_key_id: str | None = None,
+    alg: str = DEFAULT_ALG,
 ) -> Dict[str, Any]:
     """
-    Return a full `toa/0.1` document with signature + payload_hash.
+    Return a full `toa/0.1` document with signature + payload_hash + alg.
 
     `claim` must include all signed fields (see SPEC / SIGNED_KEYS). Envelope
-    fields are added here.
+    fields (`signature`, `payload_hash`, `public_key_id`, `alg`) are added here
+    and are not part of the signed body. Only Ed25519 is implemented today.
     """
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    if alg != DEFAULT_ALG:
+        raise ValueError(f"unsupported_algorithm:{alg}")
 
     body = claim_for_signing(claim)
     for required in ("spec", "toa_id", "tool", "run", "observed_at", "layers", "emitter"):
@@ -83,4 +88,5 @@ def sign_document(
         "payload_hash": payload_hash_for_claim(body),
         "signature": sig,
         "public_key_id": key_id,
+        "alg": alg,
     }

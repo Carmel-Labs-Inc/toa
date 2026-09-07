@@ -16,6 +16,7 @@ from mcp.server.context import ServerRequestContext
 from mcp.types import CallToolRequestParams, CallToolResult
 
 from toa_verify.sign import sign_document
+from toa_verify.verify import args_hash_for
 
 from .attach import (
     build_claim,
@@ -63,7 +64,15 @@ def _client_toa_settings(ctx: ServerRequestContext[Any, Any]) -> Optional[Client
         require_emitter=raw.get("requireEmitter"),
         max_age_seconds=raw.get("maxAgeSeconds", 604800),
         min_layers=raw.get("minLayers"),
+        require_args_hash=bool(raw.get("requireArgsHash", False)),
     )
+
+
+def _arguments_mapping(params: CallToolRequestParams) -> Mapping[str, Any]:
+    raw = getattr(params, "arguments", None)
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    return {}
 
 
 def _result_is_negative(result: CallToolResult) -> bool:
@@ -149,6 +158,9 @@ class ToaAttachExtension(Extension):
             if negative
             else ["mcp-sdk-e2e-attach"]
         )
+        # Always bind call args (digest only). Closes substitution when client
+        # recomputes expected_args_hash / sets requireArgsHash.
+        digest = args_hash_for(_arguments_mapping(params))
 
         claim = build_claim(
             tool_name=params.name,
@@ -161,6 +173,7 @@ class ToaAttachExtension(Extension):
             emitter_key_id=self._public_key_id,
             reasons=reasons,
             disposition=disposition,
+            args_hash=digest,
         )
         document = sign_document(
             claim,

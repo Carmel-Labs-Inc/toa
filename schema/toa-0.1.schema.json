@@ -65,6 +65,11 @@
       "enum": ["delivered", "failed", "refused", "unavailable"],
       "description": "Optional signed delivery disposition. Prefer explicit values on negative paths (MCP extension absence gap)."
     },
+    "args_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Optional signed commitment to tool arguments (canonical JSON SHA-256). When present, verifiers MUST check it; when absent, requiring it is a verifier policy decision."
+    },
     "business_outcome_ok": { "type": ["boolean", "null"] },
     "reasons": {
       "type": "array",
@@ -90,8 +95,12 @@
     },
     "signature": {
       "type": ["string", "null"],
-      "description": "Base64 Ed25519 signature over canonical JSON of signed claim fields"
+      "description": "Base64 signature over canonical JSON of signed claim fields (algorithm selected by envelope alg)"
     },
-    "public_key_id": { "type": "string" }
+    "public_key_id": { "type": "string" },
+    "alg": {
+      "type": "string",
+      "description": "Envelope signing algorithm. Absent means Ed25519 for toa/0.1 backward compatibility. Only Ed25519 is required to be implemented today; unknown values MUST fail closed."
+    }
   }
 }

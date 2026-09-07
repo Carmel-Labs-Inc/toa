@@ -107,7 +107,45 @@ async def test_e2e_attach_when_client_requires():
         assert binding["emitter_role"] == "third_party"
         assert binding["document"]["tool"]["name"] == "echo"
         assert binding["document"]["disposition"] == "delivered"
+        from toa_verify import args_hash_for
+
+        assert binding["document"]["args_hash"] == args_hash_for({"text": "hello-e2e"})
         enforced = _enforce(result)
+        assert enforced["ok"] is True, enforced
+
+
+@pytest.mark.asyncio
+async def test_e2e_require_args_hash_capability_and_match():
+    """Client requireArgsHash + SDK attach digest must round-trip."""
+    from toa_verify import args_hash_for
+
+    client_ext = advertise(
+        EXTENSION_ID,
+        {
+            "require": True,
+            "acceptedEmitterRoles": ["third_party"],
+            "requireEmitter": "toa-conformance",
+            "requireArgsHash": True,
+        },
+    )
+    args = {"text": "args-bound"}
+    async with Client(_server(attach="on_require"), extensions=[client_ext]) as client:
+        result = await client.call_tool("echo", args)
+        binding = (result.meta or {})[EXTENSION_ID]
+        digest = args_hash_for(args)
+        assert binding["document"]["args_hash"] == digest
+        enforced = enforce_client_require(
+            {"content": [], "_meta": dict(result.meta or {})},
+            client_settings=ClientSettings(
+                require=True,
+                accepted_emitter_roles=["third_party"],
+                require_emitter="toa-conformance",
+                require_args_hash=True,
+                expected_args_hash=digest,
+            ),
+            public_key=PUB,
+            expected_tool_name="echo",
+        )
         assert enforced["ok"] is True, enforced
 
 

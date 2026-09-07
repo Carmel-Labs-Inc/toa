@@ -198,6 +198,8 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T11 negotiation record | harness PASS |
 | T12 signed negative disposition | harness PASS |
 | T13 absence vs never-advertised | harness PASS |
+| T14 optional args_hash | harness PASS |
+| T15 require args_hash | harness PASS |
 
 ---
 
@@ -236,3 +238,26 @@ Fixtures: [`fixtures/`](./fixtures/).
 1. With NegotiationRecord `server_advertised_toa: false` and no docs → class `outside_toa`
 2. With NegotiationRecord `server_advertised_toa: true` and no doc for a required call → class `attestation_gap`
 3. Those classes MUST NOT be equal
+
+---
+
+## T14 — `toa-optional-args-hash`
+
+**Intent:** Optional signed `args_hash` binds call arguments without requiring raw args in the document.
+
+**Checks:**
+
+1. Binding includes `args_hash` matching `sha256:` of canonical JSON of the call arguments
+2. Validation with `expected_args_hash` set succeeds when digests match
+3. `requireArgsHash` may remain false
+
+---
+
+## T15 — `toa-require-args-hash`
+
+**Intent:** Binding depth is a verifier decision: `requireArgsHash: true` fails closed without `args_hash`.
+
+**Checks:**
+
+1. Document without `args_hash` under `requireArgsHash: true` → reason `args_hash`
+2. Document with matching `args_hash` → validates
