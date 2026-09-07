@@ -60,6 +60,11 @@
       "type": ["string", "null"],
       "description": "operator | schema | substance | soft | none | …"
     },
+    "disposition": {
+      "type": "string",
+      "enum": ["delivered", "failed", "refused", "unavailable"],
+      "description": "Optional signed delivery disposition. Prefer explicit values on negative paths (MCP extension absence gap)."
+    },
     "business_outcome_ok": { "type": ["boolean", "null"] },
     "reasons": {
       "type": "array",

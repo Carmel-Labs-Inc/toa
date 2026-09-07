@@ -28,6 +28,7 @@ SIGNED_KEYS = (
     "business_outcome_ok",
     "reasons",
     "emitter",
+    "disposition",
 )
 
 KeyMaterial = Union[str, bytes, Mapping[str, Any], Path]

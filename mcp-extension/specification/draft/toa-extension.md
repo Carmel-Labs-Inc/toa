@@ -233,11 +233,11 @@ Bindings are optional. Invalid bindings SHOULD be ignored or surfaced as warning
 
 ### 9.3 Client `require: true`
 
-After a successful core `tools/call` result is received (or produced):
+After a `tools/call` completes (successful result, `isError: true` result, or peer error):
 
-- If no binding is present, the client MUST fail closed.
+- If no binding is present when the server advertised this extension with `attach` in (`on_require`, `always`), the client MUST fail closed and MUST record the miss against the negotiation record (§13).
 - If a binding is present but validation (§8) fails, the client MUST fail closed.
-- Servers advertising `attach: on_require` or `always` MUST attempt to attach a valid binding; if they cannot, they MUST return the error in §10 instead of a successful result without a binding.
+- Servers advertising `attach: on_require` or `always` MUST attach a valid binding on **both** positive and negative delivery paths (§14); if they cannot, they MUST return the error in §10 instead of a bare result/error without a binding.
 
 ### 9.4 Correlation
 
@@ -291,4 +291,82 @@ Implementations SHOULD prefer `reference` mode when documents would enlarge resu
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios in [`../../conformance/SCENARIOS.md`](../../conformance/SCENARIOS.md).
+A claim of conformance to this draft MUST pass the scenarios in [`../../conformance/SCENARIOS.md`](../../conformance/SCENARIOS.md), including absence / negative-outcome scenarios T11–T13.
+
+---
+
+## 13. Absence semantics and negotiation records
+
+### 13.1 Problem
+
+A verifier holding only a bag of `toa/0.1` documents cannot, from silence alone, distinguish:
+
+1. The server never implemented / advertised this extension
+2. The server advertised this extension and delivery failed
+3. The server advertised this extension and omitted attestation for this call
+
+Without additional structure, offline absence is information-free and incentives run backwards: stopping attestation when things fail is indistinguishable from never supporting TOA.
+
+### 13.2 NegotiationRecord (normative companion)
+
+Clients and gateways that perform offline or post-hoc verification MUST persist a **NegotiationRecord** whenever they complete `server/discover` (or the protocol revision’s equivalent capability advertisement) against a server.
+
+`NegotiationRecord` MUST be a JSON object:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `spec` | yes | MUST be `toa-negotiation/0.1` |
+| `recorded_at` | yes | RFC 3339 time the record was written |
+| `protocol_version` | yes | Negotiated MCP protocol version string |
+| `server_id` | yes | Stable server identifier used by the client (implementation-defined; SHOULD match `toa.tool.server_id` when later attestations exist) |
+| `server_advertised_toa` | yes | boolean — `true` iff `capabilities.extensions["dev.agentstatus/toa"]` was present |
+| `server_settings` | no | Copy of the advertised settings object when `server_advertised_toa` is true |
+| `client_settings` | no | Client TOA settings used for subsequent calls in this context |
+| `discover_request_id` | no | Correlation id for the discover exchange |
+
+NegotiationRecord is **client-local evidence of advertisement**, not a server-signed claim. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement.
+
+Schema: [`../../schema/toa-negotiation-0.1.schema.json`](../../schema/toa-negotiation-0.1.schema.json).
+
+### 13.3 Interpreting absence offline
+
+Given a NegotiationRecord and a set of attestations for the same `server_id` / time window:
+
+| `server_advertised_toa` | Attestation present for call | Offline conclusion |
+|---|---|---|
+| `false` | no | Expected: server outside TOA |
+| `true` | yes (disposition delivered / layers pass) | Positive evidence |
+| `true` | yes (disposition failed/refused/unavailable or failing layers) | **Negative evidence** (§14) |
+| `true` | no for a call that required attach | **Attestation gap** — distinct from “never supported TOA”; MUST NOT be collapsed into (1) |
+
+Verifiers MUST treat “attestation gap” as a different outcome class from “server never advertised TOA.”
+
+---
+
+## 14. Signed negative outcomes
+
+### 14.1 Mandatory attach on failure paths
+
+When a server advertises `attach: on_require` or `attach: always` and the client has advertised this extension (with `require: true` for `on_require`):
+
+- The server MUST attach a binding not only on successful delivery, but also when the tool result has `isError: true`, when delivery is graded as failed by the emitter, or when the server refuses the call under TOA policy.
+- Omitting a binding on those paths is non-conformant and MUST be recorded by the client as an attestation gap (§13.3) when negotiation said TOA was advertised.
+
+### 14.2 `disposition` on `toa/0.1` (additive)
+
+Documents MAY include signed field `disposition` (part of the signed claim set when present):
+
+| Value | Meaning |
+|---|---|
+| `delivered` | Emitter asserts delivery succeeded under its grading policy |
+| `failed` | Emitter asserts the call was attempted and delivery failed |
+| `refused` | Emitter asserts the call was refused (policy / auth / capability) before meaningful delivery |
+| `unavailable` | Emitter asserts the server/tool was unreachable or could not be invoked |
+
+If `disposition` is absent, verifiers MAY infer a coarse signal from layers (`functional=fail` / `reach=fail` etc.) but emitters that advertise this extension SHOULD set `disposition` explicitly on negative paths.
+
+A cryptographically valid attestation with `disposition` in (`failed`, `refused`, `unavailable`) or with failing required layers **is** negative evidence. It MUST NOT be treated as silence.
+
+### 14.3 Incentive alignment
+
+Servers that advertise TOA and then go silent on failure are distinguishable from non-TOA servers **only if** clients persist NegotiationRecords (§13). Spec-conformant servers do not rely on that distinction: they emit signed negative outcomes (§14.1–14.2) instead of silence.

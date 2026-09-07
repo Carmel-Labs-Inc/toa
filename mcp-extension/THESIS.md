@@ -63,14 +63,12 @@ Aspiration to `io.modelcontextprotocol/toa` is a **later MCP governance outcome*
 
 Capability negotiation does not create cross-host wild evidence. Fabric Live + AgentStatus Intelligence remain the distribution/observation plane. The extension standardizes how sessions and gateways **speak about** attested outcomes; it does not replace residential/passive capture.
 
-### L6 — No vibe MVP surface
+### L7 — Absence must be interpretable
 
-Out of scope until the wire profile + conformance fixtures exist:
-
-- Marketing README-only PRs to `modelcontextprotocol/conformance`
-- “Optional verify after CI” without capability negotiation
-- Soft renaming of HTTP 200 / JSON-RPC ok as TOA
-- Embedding raw prompts, raw tool args, or raw result bodies in the attestation by default (privacy: metadata + grades + hashes only, consistent with `toa/0.1`)
+Offline verifiers MUST be able to distinguish “server never advertised TOA” from
+“server advertised TOA but produced no attestation for this call.” Clients persist
+NegotiationRecords (`toa-negotiation/0.1`). Servers that advertise attach MUST emit
+signed negative outcomes (disposition / failing layers), not silence on failure.
 
 ---
 

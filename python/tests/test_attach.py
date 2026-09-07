@@ -90,6 +90,18 @@ def test_enforce_require_missing_binding():
     assert enforced["error"]["data"]["reason"] == "missing_binding"
 
 
+def test_signed_negative_disposition_roundtrip():
+    claim = _claim(disposition="failed", decision_id="d-neg")
+    # force fail layers for realism
+    claim["layers"] = {
+        **PASS_LAYERS,
+        "functional": "fail",
+    }
+    doc = sign_document(claim, private_key=PRIV, public_key_id="test-v1")
+    assert doc["disposition"] == "failed"
+    assert verify_document(doc, public_key=PUB, require_emitter="toa-conformance")["valid"]
+
+
 def test_attach_reference_mode_with_store():
     doc = sign_document(_claim(decision_id="d-ref"), private_key=PRIV, public_key_id="test-v1")
     binding = reference_binding(
