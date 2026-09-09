@@ -132,6 +132,7 @@ class FakeMcpClient:
         pinned_key_fingerprint: Optional[str] = None,
         pinned_emitter_name: Optional[str] = None,
         transport: Optional[str] = None,
+        revocation_policy: Optional[str] = None,
     ):
         self.toa = toa
         self.advertise_toa = advertise_toa and toa is not None
@@ -140,6 +141,7 @@ class FakeMcpClient:
         self.pinned_key_fingerprint = pinned_key_fingerprint
         self.pinned_emitter_name = pinned_emitter_name
         self.transport = transport
+        self.revocation_policy = revocation_policy
         self.server_capabilities: Dict[str, Any] = {}
         self.negotiation_record: Optional[Dict[str, Any]] = None
 
@@ -170,6 +172,7 @@ class FakeMcpClient:
             pinned_key_fingerprint=self.pinned_key_fingerprint,
             pinned_emitter_name=self.pinned_emitter_name,
             transport=self.transport,
+            revocation_policy=self.revocation_policy,
         )
         return init
 

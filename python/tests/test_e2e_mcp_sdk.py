@@ -112,6 +112,7 @@ async def test_e2e_record_negotiation_pins_from_client():
         pinned_public_key_id="test-v1",
         pinned_emitter_name="toa-conformance",
         transport="stdio",
+        revocation_policy="valid_at_observed_at",
     )
     async with Client(_server(attach="on_require"), extensions=[client_ext]) as client:
         record = neg.capture(client)
@@ -125,6 +126,7 @@ async def test_e2e_record_negotiation_pins_from_client():
         assert record["pinned_emitter_name"] == "toa-conformance"
         assert record["pinned_key_fingerprint"] == key_fingerprint(PUB)
         assert record["transport"] == "stdio"
+        assert record["revocation_policy"] == "valid_at_observed_at"
 
         result = await client.call_tool("echo", {"text": "pin-e2e"})
         binding = result.meta[EXTENSION_ID]

@@ -339,7 +339,7 @@ Optional signed `args_hash` MAY bind a digest of arguments without embedding the
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, and T16 key-pin scenarios), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, T16 key-pin, T17 inconsistent-claims, and T18 explicit revocation-policy), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
 
 ---
 
@@ -375,6 +375,7 @@ Clients and gateways that perform offline or post-hoc verification MUST persist 
 | `pinned_key_fingerprint` | no | `sha256:` hex of the raw public key bytes the client trusts |
 | `pinned_emitter_name` | no | Optional pin of `emitter.name` |
 | `transport` | no | `stdio` \| `http` \| `sse` \| `other` — informational; does not change who signs |
+| `revocation_policy` | no | Per-verifier revoke reading: `valid_at_observed_at` \| `invalid_if_revoked_now`. Absent means unspecified. |
 
 NegotiationRecord is **client-local evidence of advertisement and trust pins**, not a server-signed claim. Key pins are **out-of-band**: the server MUST NOT be treated as authoritative for which public key the client trusts. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement and pins.
 
@@ -387,13 +388,14 @@ Given a NegotiationRecord and a set of attestations for the same `server_id` / t
 | `server_advertised_toa` | Attestation present for call | Offline conclusion |
 |---|---|---|
 | `false` | no | Expected: server outside TOA |
-| `true` | yes (disposition delivered / layers pass) | Positive evidence |
-| `true` | yes (disposition failed/refused/unavailable or failing layers) | **Negative evidence** (§14) |
+| `true` | yes (disposition delivered and core layers do not fail) | Positive evidence |
+| `true` | yes (disposition failed/refused/unavailable or failing layers, claims consistent) | **Negative evidence** (§14) |
+| `true` | yes (`disposition=delivered` and a core layer is `fail`) | **`inconsistent_claims`** — MUST NOT be classified as positive |
 | `true` | no for a call that required attach | **Attestation gap** — distinct from “never supported TOA”; MUST NOT be collapsed into (1) |
 | `true` | yes, but verifier has no trusted key | **`key_unavailable`** — MUST NOT be collapsed into attestation gap |
 | `true` | yes, but key/fingerprint does not match pin (or signature fails under the pinned key) | **`untrusted_key`** — MUST NOT be collapsed into attestation gap |
 
-Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, and `untrusted_key` as different outcome classes.
+Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, `untrusted_key`, and `inconsistent_claims` as different outcome classes.
 
 ---
 
@@ -421,6 +423,8 @@ If `disposition` is absent, verifiers MAY infer a coarse signal from layers (`fu
 
 A cryptographically valid attestation with `disposition` in (`failed`, `refused`, `unavailable`) or with failing required layers **is** negative evidence. It MUST NOT be treated as silence.
 
+`disposition=delivered` plus any core layer (`reach`, `invoke`, `functional`) equal to `fail` is **inconsistent**. Offline classify MUST return `inconsistent_claims`, not `positive_evidence`. Failed layers MUST NOT be ignored because disposition said delivered. Emitters MUST NOT produce that combination.
+
 ### 14.3 Incentive alignment
 
 Servers that advertise TOA and then go silent on failure are distinguishable from non-TOA servers **only if** clients persist NegotiationRecords (§13). Spec-conformant servers do not rely on that distinction: they emit signed negative outcomes (§14.1–14.2) instead of silence.
@@ -437,7 +441,14 @@ TOA does **not** define a public-key infrastructure. Offline verify requires the
 
 ### 15.2 Revocation of already-signed evidence
 
-Default policy: **`valid_at_observed_at`**. If the signing key was not revoked at `observed_at`, a cryptographically valid signature remains historically acceptable even if the key is later revoked. Verifiers MAY apply stricter `invalid_if_revoked_now` and MUST name that policy. TOA does not mandate CRL/OCSP or a key server.
+Both readings are defined. **Neither is a global default.** Verifiers that evaluate a revoked key MUST declare which reading they use on the NegotiationRecord (`revocation_policy`), the same way `requireArgsHash` is a verifier decision.
+
+| Policy | Question it answers | Typical use |
+|---|---|---|
+| `valid_at_observed_at` | Was the key still trusted at `observed_at`? | Ledger / archive. Rotation must not erase history. |
+| `invalid_if_revoked_now` | Is the key revoked at verification time? | Action gates. Fail closed on current revoke. |
+
+If `revocation_policy` is absent and a revoke timestamp is in play, verifiers MUST fail closed (`revocation_policy_unspecified`). They MUST NOT inherit an implicit default. TOA does not mandate CRL/OCSP or a key server.
 
 ### 15.3 Stdio and other transports
 

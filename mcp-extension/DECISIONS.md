@@ -157,13 +157,17 @@ Only Ed25519 verify is implemented today; unknown algs fail closed.
 
 **Key pin / trust (2026-09-09):** NegotiationRecord optional pin fields;
 offline classes `key_unavailable` / `untrusted_key` ≠ `attestation_gap`;
-default revocation `valid_at_observed_at`; stdio signer = emitter key (§15);
-harness T16 PASS.
+stdio signer = emitter key (§15); harness T16 PASS.
 
 **SDK NegotiationRecord pin persistence (same day):**
 `record_negotiation_from_client` / `ToaClientNegotiation` capture
 server advertise + out-of-band pins from a live official MCP `Client` after
 discover (not FakeMcp-only). E2E asserts pin match + absence class.
+
+**Inconsistent claims + explicit revoke policy (2026-09-09):**
+`disposition=delivered` + failing core layer is `inconsistent_claims`
+(not positive). `revocation_policy` is per-verifier on NegotiationRecord;
+unspecified + revoke timestamp fails closed. Harness T17–T18 PASS.
 
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
