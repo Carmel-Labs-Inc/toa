@@ -74,8 +74,20 @@ __all__ = [
 __version__ = "0.1.0"
 
 try:
-    from .mcp_sdk import ToaAttachExtension  # noqa: F401
+    from .mcp_sdk import (  # noqa: F401
+        ToaAttachExtension,
+        ToaClientNegotiation,
+        initialize_snapshot_from_client,
+        record_negotiation_from_client,
+    )
 
-    __all__.append("ToaAttachExtension")
+    __all__.extend(
+        [
+            "ToaAttachExtension",
+            "ToaClientNegotiation",
+            "initialize_snapshot_from_client",
+            "record_negotiation_from_client",
+        ]
+    )
 except ImportError:
     pass

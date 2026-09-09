@@ -160,6 +160,11 @@ offline classes `key_unavailable` / `untrusted_key` ≠ `attestation_gap`;
 default revocation `valid_at_observed_at`; stdio signer = emitter key (§15);
 harness T16 PASS.
 
+**SDK NegotiationRecord pin persistence (same day):**
+`record_negotiation_from_client` / `ToaClientNegotiation` capture
+server advertise + out-of-band pins from a live official MCP `Client` after
+discover (not FakeMcp-only). E2E asserts pin match + absence class.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

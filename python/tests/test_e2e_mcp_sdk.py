@@ -31,10 +31,18 @@ from mcp.types import CallToolResult, TextContent
 from toa_ext import EXTENSION_ID, ClientSettings, enforce_client_require
 from toa_ext.mcp_sdk import (
     ToaAttachExtension,
+    ToaClientNegotiation,
     default_conformance_private_key,
     default_conformance_public_key,
+    record_negotiation_from_client,
 )
-from toa_ext.negotiation import ABSENCE_NEGATIVE, classify_absence, negotiation_from_initialize
+from toa_ext.negotiation import (
+    ABSENCE_NEGATIVE,
+    ABSENCE_POSITIVE,
+    classify_absence,
+    key_fingerprint,
+    pin_matches_document,
+)
 
 PRIV = default_conformance_private_key()
 PUB = default_conformance_public_key()
@@ -86,6 +94,50 @@ async def test_e2e_advertise_on_discover():
         assert str(client.protocol_version) in ("2026-07-28", "ProtocolVersion.V2026_07_28") or "2026-07-28" in str(
             client.protocol_version
         )
+
+
+@pytest.mark.asyncio
+async def test_e2e_record_negotiation_pins_from_client():
+    """Official Client discover → NegotiationRecord with out-of-band key pins."""
+    client_ext = advertise(
+        EXTENSION_ID,
+        {
+            "require": True,
+            "acceptedEmitterRoles": ["third_party"],
+            "requireEmitter": "toa-conformance",
+        },
+    )
+    neg = ToaClientNegotiation(
+        public_key=PUB,
+        pinned_public_key_id="test-v1",
+        pinned_emitter_name="toa-conformance",
+        transport="stdio",
+    )
+    async with Client(_server(attach="on_require"), extensions=[client_ext]) as client:
+        record = neg.capture(client)
+        assert record["spec"] == "toa-negotiation/0.1"
+        assert record["server_advertised_toa"] is True
+        assert record["protocol_version"] == "2026-07-28"
+        assert record["server_id"] == "toa-sdk-e2e"
+        assert record["server_settings"]["attach"] == "on_require"
+        assert record["client_settings"]["require"] is True
+        assert record["pinned_public_key_id"] == "test-v1"
+        assert record["pinned_emitter_name"] == "toa-conformance"
+        assert record["pinned_key_fingerprint"] == key_fingerprint(PUB)
+        assert record["transport"] == "stdio"
+
+        result = await client.call_tool("echo", {"text": "pin-e2e"})
+        binding = result.meta[EXTENSION_ID]
+        doc = binding["document"]
+        assert pin_matches_document(record, doc, public_key=PUB) is True
+        classified = classify_absence(
+            negotiation=record,
+            attestation_present=True,
+            document=doc,
+            attach_expected=True,
+            public_key_available=True,
+        )
+        assert classified["class"] == ABSENCE_POSITIVE
 
 
 @pytest.mark.asyncio
@@ -221,20 +273,22 @@ async def test_e2e_attach_signed_negative_on_is_error():
         )
         assert enforced["ok"] is True, enforced
 
-        # Synthetic NegotiationRecord as if discover advertised TOA.
+        # Persist NegotiationRecord + pins from the live Client (not a hand-built dict).
+        record = record_negotiation_from_client(
+            client,
+            public_key=PUB,
+            pinned_public_key_id="test-v1",
+            pinned_emitter_name="toa-conformance",
+            transport="stdio",
+        )
+        assert record["server_advertised_toa"] is True
+        assert pin_matches_document(record, doc, public_key=PUB) is True
         neg_class = classify_absence(
-            negotiation=negotiation_from_initialize(
-                {
-                    "protocolVersion": "2026-07-28",
-                    "capabilities": {
-                        "extensions": {EXTENSION_ID: {"attach": "on_require"}}
-                    },
-                },
-                server_id="toa-sdk-e2e",
-            ),
+            negotiation=record,
             attestation_present=True,
             document=doc,
             attach_expected=True,
+            public_key_available=True,
         )
         assert neg_class["class"] == ABSENCE_NEGATIVE
 
