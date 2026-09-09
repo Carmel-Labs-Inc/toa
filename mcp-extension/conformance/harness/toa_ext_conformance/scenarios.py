@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
-from .constants import CONFORMANCE_EMITTER_NAME, EXTENSION_ID
+from .constants import CONFORMANCE_EMITTER_NAME, EXTENSION_ID, FIXTURE_CLOCK
 from .fake_mcp import FakeMcpClient, FakeMcpServer
 from .fixtures import missing_fixture_reason, try_load_document, try_load_key
 from .types import ClientToaSettings, ScenarioResult, ServerToaSettings, Status
@@ -166,6 +166,7 @@ def scenario_t2_attach_on_require() -> ScenarioResult:
         client_settings=client.toa,
         tool_name="echo",
         public_key=key,
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
@@ -228,7 +229,7 @@ def scenario_t4_role_pinning_rejects_server() -> ScenarioResult:
     client.connect(server)
     raw = server.call_tool("echo", {"text": "x"})
     binding = raw._meta.get(EXTENSION_ID)
-    vr = validate_binding(binding, client_settings=client.toa, tool_name="echo", public_key=key)
+    vr = validate_binding(binding, client_settings=client.toa, tool_name="echo", public_key=key, now=FIXTURE_CLOCK)
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
     if vr.valid:
@@ -249,7 +250,7 @@ def scenario_t5_signature_invalid() -> ScenarioResult:
     key = _public_key_material()
     binding = _embedded_binding(doc, emitter_role="third_party")
     settings = ClientToaSettings(require=True, accepted_emitter_roles=["third_party"])
-    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key)
+    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key, now=FIXTURE_CLOCK)
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
     if vr.valid or vr.reason != "invalid_signature":
@@ -272,7 +273,7 @@ def scenario_t6_min_layers_functional() -> ScenarioResult:
         accepted_emitter_roles=["third_party"],
         min_layers={"reach": "pass", "invoke": "pass", "functional": "pass"},
     )
-    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key)
+    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key, now=FIXTURE_CLOCK)
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
     if vr.valid or vr.reason != "min_layers":
@@ -295,7 +296,7 @@ def scenario_t7_max_age() -> ScenarioResult:
         accepted_emitter_roles=["third_party"],
         max_age_seconds=3600,
     )
-    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key)
+    vr = validate_binding(binding, client_settings=settings, tool_name="echo", public_key=key, now=FIXTURE_CLOCK)
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
     if vr.valid or vr.reason != "expired":
@@ -328,6 +329,7 @@ def scenario_t8_reference_hash_mismatch() -> ScenarioResult:
         tool_name="echo",
         public_key=key,
         document_store=default_document_store(),
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
@@ -401,7 +403,7 @@ def scenario_t10_require_emitter_name() -> ScenarioResult:
         tool = "echo"
         expected_detail = "inverted_requireEmitter_until_other_emitter_fixture"
 
-    vr = validate_binding(binding, client_settings=settings, tool_name=tool, public_key=key)
+    vr = validate_binding(binding, client_settings=settings, tool_name=tool, public_key=key, now=FIXTURE_CLOCK)
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
     if vr.valid or vr.reason != "emitter_name":
@@ -551,6 +553,7 @@ def scenario_t12_signed_negative_disposition() -> ScenarioResult:
         client_settings=client.toa,
         tool_name="soft_fail",
         public_key=key,
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(pol.reason):
         return _skip(sid, name, pol.reason, detail=pol.detail)
@@ -704,6 +707,7 @@ def scenario_t14_optional_args_hash() -> ScenarioResult:
         client_settings=client.toa,
         tool_name="echo",
         public_key=key,
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(vr.reason):
         return _skip(sid, name, vr.reason, detail=vr.detail)
@@ -765,6 +769,7 @@ def scenario_t15_require_args_hash() -> ScenarioResult:
         client_settings=settings,
         tool_name="echo",
         public_key=key,
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(vr_missing.reason):
         return _skip(sid, name, vr_missing.reason, detail=vr_missing.detail)
@@ -802,6 +807,7 @@ def scenario_t15_require_args_hash() -> ScenarioResult:
         ),
         tool_name="echo",
         public_key=key,
+        now=FIXTURE_CLOCK,
     )
     if _crypto_blocked(vr_ok.reason):
         return _skip(sid, name, vr_ok.reason, detail=vr_ok.detail)
@@ -809,6 +815,155 @@ def scenario_t15_require_args_hash() -> ScenarioResult:
         return _fail(sid, name, vr_ok.reason, detail=vr_ok.detail)
 
     return _pass(sid, name, checks={"missing": "PASS", "present": "PASS"})
+
+
+def scenario_t16_key_pin_classes() -> ScenarioResult:
+    """T16 — key_unavailable / untrusted_key ≠ attestation_gap; pins on NegotiationRecord."""
+    sid, name = "T16", "toa-key-pin-and-verify-classes"
+    from pathlib import Path
+
+    from toa_ext.attach import build_claim, embedded_binding
+    from toa_ext.negotiation import (
+        ABSENCE_ATTESTATION_GAP,
+        ABSENCE_KEY_UNAVAILABLE,
+        ABSENCE_UNTRUSTED_KEY,
+        classify_absence,
+        evaluate_revocation,
+        key_fingerprint,
+        pin_matches_document,
+    )
+    from toa_verify import sign_document
+
+    priv_path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "keys"
+        / "toa-conformance-test-v1.private.json"
+    )
+    pub_path = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "keys"
+        / "toa-conformance-test-v1.json"
+    )
+    if not priv_path.is_file() or not pub_path.is_file():
+        return _skip(sid, name, "missing_keys")
+
+    fp = key_fingerprint(pub_path)
+    server = FakeMcpServer(toa=ServerToaSettings(attach="on_require"), advertise_toa=True)
+    client = FakeMcpClient(
+        toa=ClientToaSettings(require=True, accepted_emitter_roles=["third_party"]),
+        server_id="srv-pin",
+        pinned_public_key_id="test-v1",
+        pinned_key_fingerprint=fp,
+        pinned_emitter_name=CONFORMANCE_EMITTER_NAME,
+        transport="stdio",
+    )
+    client.connect(server)
+    rec = client.negotiation_record
+    if rec is None or rec.get("pinned_key_fingerprint") != fp:
+        return _fail(sid, name, "pin_not_recorded", detail=str(rec))
+    if rec.get("transport") != "stdio":
+        return _fail(sid, name, "transport_not_recorded")
+
+    claim = build_claim(
+        tool_name="echo",
+        server_id="srv-pin",
+        decision_id="t16",
+        agent_id="00000000-0000-0000-0000-0000000000c1",
+        layers={
+            "reach": "pass",
+            "invoke": "pass",
+            "functional": "pass",
+            "shape": "n/a",
+            "openapi_fidelity": "n/a",
+            "compositional": "n/a",
+        },
+        emitter_name=CONFORMANCE_EMITTER_NAME,
+        emitter_key_id="test-v1",
+        reasons=["t16"],
+        disposition="delivered",
+    )
+    doc = sign_document(claim, private_key=priv_path, public_key_id="test-v1")
+
+    # Attestation present, no trusted key → key_unavailable (not gap)
+    c_no_key = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        attach_expected=True,
+        public_key_available=False,
+    )
+    if c_no_key.get("class") != ABSENCE_KEY_UNAVAILABLE:
+        return _fail(sid, name, "expected_key_unavailable", detail=str(c_no_key))
+
+    # Wrong pin → untrusted_key
+    bad_pin = dict(rec)
+    bad_pin["pinned_public_key_id"] = "other-v1"
+    match = pin_matches_document(bad_pin, doc, public_key=pub_path)
+    if match is not False:
+        return _fail(sid, name, "expected_pin_mismatch", detail=str(match))
+    c_bad = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        attach_expected=True,
+        public_key_available=True,
+        key_matches_pin=False,
+    )
+    if c_bad.get("class") != ABSENCE_UNTRUSTED_KEY:
+        return _fail(sid, name, "expected_untrusted_key", detail=str(c_bad))
+
+    # Distinct from attestation_gap
+    c_gap = classify_absence(
+        negotiation=rec,
+        attestation_present=False,
+        attach_expected=True,
+    )
+    if c_gap.get("class") != ABSENCE_ATTESTATION_GAP:
+        return _fail(sid, name, "expected_gap", detail=str(c_gap))
+    if c_no_key["class"] == c_gap["class"] or c_bad["class"] == c_gap["class"]:
+        return _fail(sid, name, "classes_collapsed")
+
+    # Revocation default: valid_at_observed_at
+    rev = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+    )
+    if not rev.get("acceptable"):
+        return _fail(sid, name, "revocation_default_wrong", detail=str(rev))
+
+    # Good pin matches
+    if pin_matches_document(rec, doc, public_key=pub_path) is not True:
+        return _fail(sid, name, "good_pin_should_match")
+
+    # Binding still validates with real key (sanity)
+    vr = validate_binding(
+        embedded_binding(doc, emitter_role="third_party"),
+        client_settings=ClientToaSettings(
+            require=True,
+            accepted_emitter_roles=["third_party"],
+            require_emitter=CONFORMANCE_EMITTER_NAME,
+        ),
+        tool_name="echo",
+        public_key=_public_key_material(),
+    )
+    if _crypto_blocked(vr.reason):
+        return _skip(sid, name, vr.reason, detail=vr.detail)
+    if not vr.valid:
+        return _fail(sid, name, vr.reason, detail=vr.detail)
+
+    return _pass(
+        sid,
+        name,
+        checks={
+            "pin": "PASS",
+            "key_unavailable": "PASS",
+            "untrusted_key": "PASS",
+            "distinct": "PASS",
+            "revocation": "PASS",
+        },
+    )
 
 
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
@@ -827,4 +982,5 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T13", "toa-absence-vs-never-advertised", scenario_t13_absence_vs_never_advertised),
     ("T14", "toa-optional-args-hash", scenario_t14_optional_args_hash),
     ("T15", "toa-require-args-hash", scenario_t15_require_args_hash),
+    ("T16", "toa-key-pin-and-verify-classes", scenario_t16_key_pin_classes),
 ]

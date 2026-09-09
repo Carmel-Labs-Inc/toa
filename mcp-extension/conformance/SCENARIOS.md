@@ -200,6 +200,7 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T13 absence vs never-advertised | harness PASS |
 | T14 optional args_hash | harness PASS |
 | T15 require args_hash | harness PASS |
+| T16 key pin / verify classes | harness PASS |
 
 ---
 
@@ -261,3 +262,16 @@ Fixtures: [`fixtures/`](./fixtures/).
 
 1. Document without `args_hash` under `requireArgsHash: true` → reason `args_hash`
 2. Document with matching `args_hash` → validates
+
+---
+
+## T16 — `toa-key-pin-and-verify-classes`
+
+**Intent:** Key distribution ambiguity must not collapse into attestation gap. NegotiationRecord records out-of-band pins; offline classes distinguish `key_unavailable` and `untrusted_key`.
+
+**Checks:**
+
+1. NegotiationRecord stores `pinned_public_key_id` / `pinned_key_fingerprint` (and optional `transport`)
+2. Attestation present + no trusted key → class `key_unavailable` ≠ `attestation_gap`
+3. Pin mismatch → class `untrusted_key` ≠ `attestation_gap`
+4. Default revocation policy `valid_at_observed_at` accepts evidence observed before revoke
