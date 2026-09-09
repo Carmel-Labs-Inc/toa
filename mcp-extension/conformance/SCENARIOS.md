@@ -201,6 +201,8 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T14 optional args_hash | harness PASS |
 | T15 require args_hash | harness PASS |
 | T16 key pin / verify classes | harness PASS |
+| T17 inconsistent disposition/layers | harness PASS |
+| T18 explicit revocation policy | harness PASS |
 
 ---
 
@@ -274,4 +276,26 @@ Fixtures: [`fixtures/`](./fixtures/).
 1. NegotiationRecord stores `pinned_public_key_id` / `pinned_key_fingerprint` (and optional `transport`)
 2. Attestation present + no trusted key → class `key_unavailable` ≠ `attestation_gap`
 3. Pin mismatch → class `untrusted_key` ≠ `attestation_gap`
-4. Default revocation policy `valid_at_observed_at` accepts evidence observed before revoke
+
+---
+
+## T17 — `toa-inconsistent-disposition-layers`
+
+**Intent:** `disposition=delivered` must not hide a failing core layer. Offline classify rejects the conflict instead of calling it positive.
+
+**Checks:**
+
+1. `document_is_negative_evidence({disposition: delivered, layers.functional: fail})` is true
+2. `classify_absence` → `inconsistent_claims` ≠ `positive_evidence`
+
+---
+
+## T18 — `toa-explicit-revocation-policy`
+
+**Intent:** Ledger and action-gate revoke readings are both defined. Neither is inherited when unspecified.
+
+**Checks:**
+
+1. Revoke timestamp + no `revocation_policy` → `revocation_policy_unspecified` (not acceptable)
+2. Record with `valid_at_observed_at` accepts evidence observed before revoke
+3. Record with `invalid_if_revoked_now` rejects after the key is revoked now

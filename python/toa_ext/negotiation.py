@@ -27,11 +27,14 @@ ABSENCE_NEGATIVE = "negative_evidence"
 ABSENCE_NO_ATTESTATION_OPTIONAL = "no_attestation_optional"
 ABSENCE_KEY_UNAVAILABLE = "key_unavailable"
 ABSENCE_UNTRUSTED_KEY = "untrusted_key"
+ABSENCE_INCONSISTENT = "inconsistent_claims"
 
-# Default: evidence remains valid if the signing key was trusted at observed_at,
-# even if later revoked. Stricter verifiers MAY use invalid_if_revoked_now.
+# Both policies are defined. Neither is inherited when the field is absent.
 REVOCATION_VALID_AT_OBSERVED = "valid_at_observed_at"
 REVOCATION_INVALID_IF_REVOKED_NOW = "invalid_if_revoked_now"
+REVOCATION_POLICIES = frozenset(
+    {REVOCATION_VALID_AT_OBSERVED, REVOCATION_INVALID_IF_REVOKED_NOW}
+)
 
 NEGATIVE_DISPOSITIONS = frozenset({"failed", "refused", "unavailable"})
 POSITIVE_DISPOSITIONS = frozenset({"delivered"})
@@ -84,6 +87,7 @@ def build_negotiation_record(
     pinned_key_fingerprint: Optional[str] = None,
     pinned_emitter_name: Optional[str] = None,
     transport: Optional[str] = None,
+    revocation_policy: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a client-local NegotiationRecord (§13.2)."""
     if not server_id:
@@ -92,6 +96,8 @@ def build_negotiation_record(
         raise ValueError("protocol_version is required")
     if transport is not None and transport not in TRANSPORTS:
         raise ValueError(f"invalid transport: {transport}")
+    if revocation_policy is not None and revocation_policy not in REVOCATION_POLICIES:
+        raise ValueError(f"invalid revocation_policy: {revocation_policy}")
     record: Dict[str, Any] = {
         "spec": NEGOTIATION_SPEC,
         "recorded_at": recorded_at or _utc_now_rfc3339(),
@@ -105,6 +111,7 @@ def build_negotiation_record(
         "pinned_key_fingerprint": pinned_key_fingerprint,
         "pinned_emitter_name": pinned_emitter_name,
         "transport": transport,
+        "revocation_policy": revocation_policy,
     }
     return record
 
@@ -120,6 +127,7 @@ def negotiation_from_initialize(
     pinned_key_fingerprint: Optional[str] = None,
     pinned_emitter_name: Optional[str] = None,
     transport: Optional[str] = None,
+    revocation_policy: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Derive NegotiationRecord from an MCP initialize / discover result.
@@ -155,6 +163,7 @@ def negotiation_from_initialize(
         pinned_key_fingerprint=pinned_key_fingerprint,
         pinned_emitter_name=pinned_emitter_name,
         transport=transport,
+        revocation_policy=revocation_policy,
     )
 
 
@@ -177,21 +186,37 @@ def validate_negotiation_record(record: Any) -> Dict[str, Any]:
     if fp is not None:
         if not isinstance(fp, str) or not fp.startswith("sha256:"):
             return {"valid": False, "reason": "invalid_pinned_key_fingerprint"}
+    policy = record.get("revocation_policy")
+    if policy is not None and policy not in REVOCATION_POLICIES:
+        return {"valid": False, "reason": "invalid_revocation_policy", "got": policy}
     return {"valid": True, "reason": "ok"}
+
+
+def document_has_failing_core_layer(document: Mapping[str, Any]) -> bool:
+    layers = document.get("layers") if isinstance(document.get("layers"), Mapping) else {}
+    return any(layers.get(layer) == "fail" for layer in CORE_LAYERS)
+
+
+def document_claims_are_inconsistent(document: Mapping[str, Any]) -> bool:
+    """
+    True when disposition and core layers contradict (§14.2).
+
+    ``disposition=delivered`` plus any core layer ``fail`` is inconsistent.
+    Failed required layers do not become positive just because disposition says
+    delivered. The offline class for that document is ``inconsistent_claims``,
+    not ``positive_evidence``.
+    """
+    return (
+        document.get("disposition") in POSITIVE_DISPOSITIONS
+        and document_has_failing_core_layer(document)
+    )
 
 
 def document_is_negative_evidence(document: Mapping[str, Any]) -> bool:
     """True if disposition or core layers assert a negative outcome (§14.2)."""
-    disposition = document.get("disposition")
-    if disposition in NEGATIVE_DISPOSITIONS:
+    if document.get("disposition") in NEGATIVE_DISPOSITIONS:
         return True
-    if disposition in POSITIVE_DISPOSITIONS:
-        return False
-    layers = document.get("layers") if isinstance(document.get("layers"), Mapping) else {}
-    for layer in CORE_LAYERS:
-        if layers.get(layer) == "fail":
-            return True
-    return False
+    return document_has_failing_core_layer(document)
 
 
 def _parse_rfc3339(value: Any) -> Optional[datetime]:
@@ -209,40 +234,74 @@ def _parse_rfc3339(value: Any) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
+def revocation_policy_from_record(negotiation: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """Read ``revocation_policy`` from a NegotiationRecord. Absent → None."""
+    if not isinstance(negotiation, Mapping):
+        return None
+    policy = negotiation.get("revocation_policy")
+    if policy is None:
+        return None
+    if policy not in REVOCATION_POLICIES:
+        return None
+    return str(policy)
+
+
 def evaluate_revocation(
     *,
     observed_at: Any,
     key_revoked_at: Optional[Any] = None,
-    policy: str = REVOCATION_VALID_AT_OBSERVED,
+    policy: Optional[str] = None,
     now: Optional[datetime] = None,
+    negotiation: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Decide whether already-signed evidence remains acceptable after key revoke.
 
-    Default policy ``valid_at_observed_at``: if the key was not yet revoked at
-    ``observed_at``, the signature remains historically valid even if revoked now.
+    Both policies are defined. Neither is a global default:
 
-    ``invalid_if_revoked_now``: if the key is revoked at verification time, reject.
+    - ``valid_at_observed_at``: historically acceptable if the key was still
+      trusted at ``observed_at`` (ledger / archive).
+    - ``invalid_if_revoked_now``: reject if the key is revoked at verify time
+      (action gates).
+
+    Policy comes from ``policy`` or ``negotiation.revocation_policy``. If a
+    revoke timestamp is present and no policy was declared, return
+    ``revocation_policy_unspecified`` (fail closed). Two verifiers MUST NOT
+    silently pick different readings.
     """
+    declared = policy if policy is not None else revocation_policy_from_record(negotiation)
+
     if key_revoked_at is None:
-        return {"acceptable": True, "reason": "key_not_revoked", "policy": policy}
+        return {"acceptable": True, "reason": "key_not_revoked", "policy": declared}
+
+    if declared is None:
+        return {
+            "acceptable": False,
+            "reason": "revocation_policy_unspecified",
+            "policy": None,
+        }
+    if declared not in REVOCATION_POLICIES:
+        return {
+            "acceptable": False,
+            "reason": "unknown_revocation_policy",
+            "policy": declared,
+        }
 
     revoked = _parse_rfc3339(key_revoked_at)
     observed = _parse_rfc3339(observed_at)
     if revoked is None:
-        return {"acceptable": False, "reason": "invalid_key_revoked_at", "policy": policy}
+        return {"acceptable": False, "reason": "invalid_key_revoked_at", "policy": declared}
     if observed is None:
-        return {"acceptable": False, "reason": "invalid_observed_at", "policy": policy}
+        return {"acceptable": False, "reason": "invalid_observed_at", "policy": declared}
 
-    if policy == REVOCATION_INVALID_IF_REVOKED_NOW:
+    if declared == REVOCATION_INVALID_IF_REVOKED_NOW:
         clock = now or datetime.now(timezone.utc)
         if clock.tzinfo is None:
             clock = clock.replace(tzinfo=timezone.utc)
         if clock >= revoked:
-            return {"acceptable": False, "reason": "key_revoked_now", "policy": policy}
-        return {"acceptable": True, "reason": "key_not_yet_revoked", "policy": policy}
+            return {"acceptable": False, "reason": "key_revoked_now", "policy": declared}
+        return {"acceptable": True, "reason": "key_not_yet_revoked", "policy": declared}
 
-    # Default: valid_at_observed_at
     if observed >= revoked:
         return {
             "acceptable": False,
@@ -306,10 +365,11 @@ def classify_absence(
     Returns ``{"class": ..., "reason": ...}`` where class is one of:
     ``outside_toa``, ``attestation_gap``, ``positive_evidence``,
     ``negative_evidence``, ``no_attestation_optional``,
-    ``key_unavailable``, ``untrusted_key``.
+    ``key_unavailable``, ``untrusted_key``, ``inconsistent_claims``.
 
     ``key_unavailable`` / ``untrusted_key`` MUST NOT be collapsed into
-    ``attestation_gap``.
+    ``attestation_gap``. ``disposition=delivered`` plus a failing core
+    layer is ``inconsistent_claims``, not ``positive_evidence``.
     """
     shape = validate_negotiation_record(negotiation)
     if not shape.get("valid"):
@@ -323,6 +383,11 @@ def classify_absence(
 
     if not advertised:
         if attestation_present and isinstance(document, Mapping):
+            if document_claims_are_inconsistent(document):
+                return {
+                    "class": ABSENCE_INCONSISTENT,
+                    "reason": "disposition_delivered_with_failing_core_layer",
+                }
             if document_is_negative_evidence(document):
                 return {"class": ABSENCE_NEGATIVE, "reason": "unexpected_negative_from_non_toa"}
             return {"class": ABSENCE_POSITIVE, "reason": "unexpected_positive_from_non_toa"}
@@ -369,16 +434,22 @@ def classify_absence(
             "reason": str(verify_reason),
         }
 
+    if document_claims_are_inconsistent(document):
+        return {
+            "class": ABSENCE_INCONSISTENT,
+            "reason": "disposition_delivered_with_failing_core_layer",
+        }
     if document_is_negative_evidence(document):
         return {"class": ABSENCE_NEGATIVE, "reason": "signed_negative_outcome"}
     return {"class": ABSENCE_POSITIVE, "reason": "signed_positive_outcome"}
 
 
 def classes_are_distinct() -> Sequence[str]:
-    """Sanity helper: gap ≠ outside ≠ key failures."""
+    """Sanity helper: gap ≠ outside ≠ key failures ≠ inconsistent."""
     return (
         ABSENCE_OUTSIDE_TOA,
         ABSENCE_ATTESTATION_GAP,
         ABSENCE_KEY_UNAVAILABLE,
         ABSENCE_UNTRUSTED_KEY,
+        ABSENCE_INCONSISTENT,
     )

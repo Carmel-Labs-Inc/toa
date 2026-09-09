@@ -30,7 +30,7 @@ Envelope (not signed): `signature`, `payload_hash`, `public_key_id`, `alg`
 | `refused` | Refused before meaningful delivery (policy / auth / capability) |
 | `unavailable` | Unreachable / could not invoke |
 
-Emitters implementing MCP extension `dev.agentstatus/toa` SHOULD set `disposition` explicitly on negative paths so offline verifiers do not confuse failure with silence.
+Emitters implementing MCP extension `dev.agentstatus/toa` SHOULD set `disposition` explicitly on negative paths so offline verifiers do not confuse failure with silence. `disposition=delivered` plus a failing core layer is `inconsistent_claims`, not positive evidence.
 
 ### `args_hash` (optional, signed when present)
 
@@ -75,4 +75,4 @@ POST https://api.rora.carmel.so/api/rora/public/toa/verify
 
 A valid signature proves **the named emitter asserted these grades**. It does not prove the MCP server is honest, and it does not replace MCP itself.
 
-Trust anchors are configured **out of band**. Clients SHOULD record pins on the NegotiationRecord (`pinned_public_key_id` / `pinned_key_fingerprint`). Missing key or pin mismatch is `key_unavailable` / `untrusted_key`, not an attestation gap. Default revocation policy is `valid_at_observed_at` (see MCP extension draft §15).
+Trust anchors are configured **out of band**. Clients SHOULD record pins on the NegotiationRecord (`pinned_public_key_id` / `pinned_key_fingerprint`). Missing key or pin mismatch is `key_unavailable` / `untrusted_key`, not an attestation gap. Revocation policy is per-verifier on the NegotiationRecord (`valid_at_observed_at` for ledger, `invalid_if_revoked_now` for action gates). Absent policy plus a revoke timestamp fails closed. See MCP extension draft §15.

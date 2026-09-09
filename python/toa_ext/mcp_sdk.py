@@ -278,6 +278,7 @@ def record_negotiation_from_client(
     pinned_emitter_name: Optional[str] = None,
     pinned_key_fingerprint: Optional[str] = None,
     transport: Optional[str] = None,
+    revocation_policy: Optional[str] = None,
     discover_request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -285,6 +286,8 @@ def record_negotiation_from_client(
 
     Call after context enter / discover. Pins are client trust config (out of
     band): pass ``public_key`` to auto-fill ``pinned_key_fingerprint``.
+    ``revocation_policy`` is per-verifier (ledger vs action gate); do not inherit
+    a global default.
     """
     if pinned_key_fingerprint is None and public_key is not None:
         pinned_key_fingerprint = key_fingerprint(public_key)
@@ -312,6 +315,7 @@ def record_negotiation_from_client(
         pinned_key_fingerprint=pinned_key_fingerprint,
         pinned_emitter_name=pinned_emitter_name,
         transport=transport,
+        revocation_policy=revocation_policy,
     )
     shape = validate_negotiation_record(record)
     if not shape.get("valid"):
@@ -330,6 +334,7 @@ class ToaClientNegotiation:
             pinned_public_key_id="test-v1",
             pinned_emitter_name="toa-conformance",
             transport="stdio",
+            revocation_policy="valid_at_observed_at",
         )
         async with Client(server) as client:
             rec = neg.capture(client)
@@ -345,6 +350,7 @@ class ToaClientNegotiation:
         pinned_emitter_name: Optional[str] = None,
         pinned_key_fingerprint: Optional[str] = None,
         transport: Optional[str] = None,
+        revocation_policy: Optional[str] = None,
     ) -> None:
         self.server_id = server_id
         self.client_settings = client_settings
@@ -353,6 +359,7 @@ class ToaClientNegotiation:
         self.pinned_emitter_name = pinned_emitter_name
         self.pinned_key_fingerprint = pinned_key_fingerprint
         self.transport = transport
+        self.revocation_policy = revocation_policy
         self.record: Optional[Dict[str, Any]] = None
 
     def capture(self, client: Any) -> Dict[str, Any]:
@@ -365,5 +372,6 @@ class ToaClientNegotiation:
             pinned_emitter_name=self.pinned_emitter_name,
             pinned_key_fingerprint=self.pinned_key_fingerprint,
             transport=self.transport,
+            revocation_policy=self.revocation_policy,
         )
         return self.record

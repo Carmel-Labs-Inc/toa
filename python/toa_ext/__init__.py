@@ -20,6 +20,7 @@ from .binding import (
 )
 from .negotiation import (
     ABSENCE_ATTESTATION_GAP,
+    ABSENCE_INCONSISTENT,
     ABSENCE_KEY_UNAVAILABLE,
     ABSENCE_NEGATIVE,
     ABSENCE_OUTSIDE_TOA,
@@ -30,16 +31,19 @@ from .negotiation import (
     REVOCATION_VALID_AT_OBSERVED,
     build_negotiation_record,
     classify_absence,
+    document_claims_are_inconsistent,
     document_is_negative_evidence,
     evaluate_revocation,
     key_fingerprint,
     negotiation_from_initialize,
     pin_matches_document,
+    revocation_policy_from_record,
     validate_negotiation_record,
 )
 
 __all__ = [
     "ABSENCE_ATTESTATION_GAP",
+    "ABSENCE_INCONSISTENT",
     "ABSENCE_KEY_UNAVAILABLE",
     "ABSENCE_NEGATIVE",
     "ABSENCE_OUTSIDE_TOA",
@@ -57,6 +61,7 @@ __all__ = [
     "build_negotiation_record",
     "classify_absence",
     "default_min_layers",
+    "document_claims_are_inconsistent",
     "document_is_negative_evidence",
     "embedded_binding",
     "enforce_client_require",
@@ -66,6 +71,7 @@ __all__ = [
     "negotiation_from_initialize",
     "pin_matches_document",
     "reference_binding",
+    "revocation_policy_from_record",
     "should_attach",
     "toa_failure_error",
     "validate_binding",

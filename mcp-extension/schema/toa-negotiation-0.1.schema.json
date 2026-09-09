@@ -43,6 +43,11 @@
       "type": ["string", "null"],
       "enum": ["stdio", "http", "sse", "other", null],
       "description": "Transport used for this peer. Stdio does not change who signs; the emitter key does."
+    },
+    "revocation_policy": {
+      "type": ["string", "null"],
+      "enum": ["valid_at_observed_at", "invalid_if_revoked_now", null],
+      "description": "Per-verifier revoke reading for already-signed evidence. Absent means unspecified: when a revoke timestamp is in play, do not inherit a global default."
     }
   }
 }

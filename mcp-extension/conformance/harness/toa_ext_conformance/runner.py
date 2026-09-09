@@ -1,4 +1,4 @@
-"""Scenario runner: execute T1–T16 and report PASS/FAIL/SKIP."""
+"""Scenario runner: execute T1–T18 and report PASS/FAIL/SKIP."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def format_table(results: Sequence[ScenarioResult]) -> str:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Run TOA MCP extension conformance scenarios T1–T16")
+    parser = argparse.ArgumentParser(description="Run TOA MCP extension conformance scenarios T1–T18")
     parser.add_argument(
         "--only",
         nargs="+",

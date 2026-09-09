@@ -1,4 +1,4 @@
-"""T1–T13 scenario implementations (in-process fake MCP)."""
+"""T1–T18 scenario implementations (in-process fake MCP)."""
 
 from __future__ import annotations
 
@@ -828,7 +828,6 @@ def scenario_t16_key_pin_classes() -> ScenarioResult:
         ABSENCE_KEY_UNAVAILABLE,
         ABSENCE_UNTRUSTED_KEY,
         classify_absence,
-        evaluate_revocation,
         key_fingerprint,
         pin_matches_document,
     )
@@ -925,14 +924,6 @@ def scenario_t16_key_pin_classes() -> ScenarioResult:
     if c_no_key["class"] == c_gap["class"] or c_bad["class"] == c_gap["class"]:
         return _fail(sid, name, "classes_collapsed")
 
-    # Revocation default: valid_at_observed_at
-    rev = evaluate_revocation(
-        observed_at="2026-01-01T00:00:00Z",
-        key_revoked_at="2026-06-01T00:00:00Z",
-    )
-    if not rev.get("acceptable"):
-        return _fail(sid, name, "revocation_default_wrong", detail=str(rev))
-
     # Good pin matches
     if pin_matches_document(rec, doc, public_key=pub_path) is not True:
         return _fail(sid, name, "good_pin_should_match")
@@ -961,8 +952,105 @@ def scenario_t16_key_pin_classes() -> ScenarioResult:
             "key_unavailable": "PASS",
             "untrusted_key": "PASS",
             "distinct": "PASS",
-            "revocation": "PASS",
         },
+    )
+
+
+def scenario_t17_inconsistent_disposition_layers() -> ScenarioResult:
+    """T17 — delivered + failing core layer is inconsistent_claims, not positive."""
+    sid, name = "T17", "toa-inconsistent-disposition-layers"
+    from toa_ext.negotiation import (
+        ABSENCE_INCONSISTENT,
+        ABSENCE_POSITIVE,
+        classify_absence,
+        document_claims_are_inconsistent,
+        document_is_negative_evidence,
+        negotiation_from_initialize,
+    )
+
+    rec = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-inconsistent",
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "fail"}}
+    if document_is_negative_evidence(doc) is not True:
+        return _fail(sid, name, "helper_still_short_circuits_delivered")
+    if document_claims_are_inconsistent(doc) is not True:
+        return _fail(sid, name, "conflict_not_flagged")
+    classified = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        attach_expected=True,
+    )
+    if classified.get("class") != ABSENCE_INCONSISTENT:
+        return _fail(sid, name, "expected_inconsistent_claims", detail=str(classified))
+    if classified["class"] == ABSENCE_POSITIVE:
+        return _fail(sid, name, "conflict_classified_positive")
+    return _pass(sid, name, checks={"helper": "PASS", "class": ABSENCE_INCONSISTENT})
+
+
+def scenario_t18_explicit_revocation_policy() -> ScenarioResult:
+    """T18 — revoke reading is per-verifier; unspecified does not inherit a default."""
+    sid, name = "T18", "toa-explicit-revocation-policy"
+    from datetime import datetime, timezone
+
+    from toa_ext.negotiation import (
+        REVOCATION_INVALID_IF_REVOKED_NOW,
+        REVOCATION_VALID_AT_OBSERVED,
+        evaluate_revocation,
+        negotiation_from_initialize,
+    )
+
+    unspecified = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+    )
+    if unspecified.get("acceptable") or unspecified.get("reason") != "revocation_policy_unspecified":
+        return _fail(sid, name, "unspecified_must_not_inherit", detail=str(unspecified))
+
+    ledger = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-ledger",
+        revocation_policy=REVOCATION_VALID_AT_OBSERVED,
+    )
+    if ledger.get("revocation_policy") != REVOCATION_VALID_AT_OBSERVED:
+        return _fail(sid, name, "ledger_policy_not_recorded")
+    ledger_ok = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+        negotiation=ledger,
+    )
+    if not ledger_ok.get("acceptable"):
+        return _fail(sid, name, "ledger_should_accept_pre_revoke", detail=str(ledger_ok))
+
+    gate = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-gate",
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    gate_now = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+        negotiation=gate,
+        now=datetime(2026, 9, 1, tzinfo=timezone.utc),
+    )
+    if gate_now.get("acceptable"):
+        return _fail(sid, name, "gate_should_reject_revoked_now", detail=str(gate_now))
+
+    return _pass(
+        sid,
+        name,
+        checks={"unspecified": "PASS", "ledger": "PASS", "gate": "PASS"},
     )
 
 
@@ -983,4 +1071,6 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T14", "toa-optional-args-hash", scenario_t14_optional_args_hash),
     ("T15", "toa-require-args-hash", scenario_t15_require_args_hash),
     ("T16", "toa-key-pin-and-verify-classes", scenario_t16_key_pin_classes),
+    ("T17", "toa-inconsistent-disposition-layers", scenario_t17_inconsistent_disposition_layers),
+    ("T18", "toa-explicit-revocation-policy", scenario_t18_explicit_revocation_policy),
 ]
