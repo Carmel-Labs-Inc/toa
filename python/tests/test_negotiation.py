@@ -1,19 +1,31 @@
-"""NegotiationRecord + offline absence classification."""
+"""NegotiationRecord + offline absence / key-pin classification."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from toa_ext.negotiation import (
     ABSENCE_ATTESTATION_GAP,
+    ABSENCE_KEY_UNAVAILABLE,
     ABSENCE_NEGATIVE,
     ABSENCE_OUTSIDE_TOA,
     ABSENCE_POSITIVE,
+    ABSENCE_UNTRUSTED_KEY,
     NEGOTIATION_SPEC,
+    REVOCATION_INVALID_IF_REVOKED_NOW,
+    REVOCATION_VALID_AT_OBSERVED,
     build_negotiation_record,
     classify_absence,
     document_is_negative_evidence,
+    evaluate_revocation,
+    key_fingerprint,
     negotiation_from_initialize,
+    pin_matches_document,
     validate_negotiation_record,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
+PUB = ROOT / "mcp-extension" / "conformance" / "fixtures" / "keys" / "toa-conformance-test-v1.json"
 
 
 def test_build_and_validate_negotiation_record():
@@ -23,9 +35,13 @@ def test_build_and_validate_negotiation_record():
         server_advertised_toa=True,
         server_settings={"attach": "on_require"},
         client_settings={"require": True},
+        pinned_public_key_id="test-v1",
+        pinned_key_fingerprint=key_fingerprint(PUB),
+        transport="stdio",
     )
     assert rec["spec"] == NEGOTIATION_SPEC
     assert validate_negotiation_record(rec)["valid"] is True
+    assert rec["transport"] == "stdio"
 
 
 def test_negotiation_from_initialize_advertised():
@@ -40,9 +56,15 @@ def test_negotiation_from_initialize_advertised():
             }
         },
     }
-    rec = negotiation_from_initialize(init, server_id="srv")
+    rec = negotiation_from_initialize(
+        init,
+        server_id="srv",
+        pinned_public_key_id="v1",
+        pinned_emitter_name="toa-conformance",
+    )
     assert rec["server_advertised_toa"] is True
     assert rec["server_settings"]["attach"] == "always"
+    assert rec["pinned_public_key_id"] == "v1"
 
 
 def test_negotiation_from_initialize_not_advertised():
@@ -89,3 +111,83 @@ def test_classify_positive_and_negative():
 def test_document_is_negative_from_layers_without_disposition():
     assert document_is_negative_evidence({"layers": {"functional": "fail"}}) is True
     assert document_is_negative_evidence({"disposition": "delivered", "layers": {}}) is False
+
+
+def test_classify_key_unavailable_not_gap():
+    yes = build_negotiation_record(
+        server_id="a",
+        protocol_version="2026-07-28",
+        server_advertised_toa=True,
+        pinned_public_key_id="test-v1",
+    )
+    doc = {"disposition": "delivered", "emitter": {"name": "toa-conformance", "key_id": "test-v1"}}
+    c = classify_absence(
+        negotiation=yes,
+        attestation_present=True,
+        document=doc,
+        public_key_available=False,
+    )
+    gap = classify_absence(negotiation=yes, attestation_present=False, attach_expected=True)
+    assert c["class"] == ABSENCE_KEY_UNAVAILABLE
+    assert gap["class"] == ABSENCE_ATTESTATION_GAP
+    assert c["class"] != gap["class"]
+
+
+def test_classify_untrusted_key_not_gap():
+    yes = build_negotiation_record(
+        server_id="a", protocol_version="2026-07-28", server_advertised_toa=True
+    )
+    doc = {"disposition": "delivered", "emitter": {"name": "x", "key_id": "y"}}
+    c = classify_absence(
+        negotiation=yes,
+        attestation_present=True,
+        document=doc,
+        key_matches_pin=False,
+    )
+    assert c["class"] == ABSENCE_UNTRUSTED_KEY
+
+
+def test_pin_matches_and_fingerprint():
+    fp = key_fingerprint(PUB)
+    rec = build_negotiation_record(
+        server_id="a",
+        protocol_version="2026-07-28",
+        server_advertised_toa=True,
+        pinned_public_key_id="test-v1",
+        pinned_key_fingerprint=fp,
+        pinned_emitter_name="toa-conformance",
+    )
+    doc = {
+        "public_key_id": "test-v1",
+        "emitter": {"name": "toa-conformance", "key_id": "test-v1"},
+    }
+    assert pin_matches_document(rec, doc, public_key=PUB) is True
+    doc_bad = {
+        "public_key_id": "other",
+        "emitter": {"name": "toa-conformance", "key_id": "other"},
+    }
+    assert pin_matches_document(rec, doc_bad, public_key=PUB) is False
+
+
+def test_evaluate_revocation_policies():
+    default_ok = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+        policy=REVOCATION_VALID_AT_OBSERVED,
+    )
+    assert default_ok["acceptable"] is True
+
+    after_revoke = evaluate_revocation(
+        observed_at="2026-07-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+        policy=REVOCATION_VALID_AT_OBSERVED,
+    )
+    assert after_revoke["acceptable"] is False
+
+    strict = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        key_revoked_at="2026-06-01T00:00:00Z",
+        policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+        now=__import__("datetime").datetime(2026, 9, 1, tzinfo=__import__("datetime").timezone.utc),
+    )
+    assert strict["acceptable"] is False

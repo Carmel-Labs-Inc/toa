@@ -339,7 +339,7 @@ Optional signed `args_hash` MAY bind a digest of arguments without embedding the
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative and T14–T15 args_hash scenarios), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, and T16 key-pin scenarios), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
 
 ---
 
@@ -371,8 +371,12 @@ Clients and gateways that perform offline or post-hoc verification MUST persist 
 | `server_settings` | no | Copy of the advertised settings object when `server_advertised_toa` is true |
 | `client_settings` | no | Client TOA settings used for subsequent calls in this context |
 | `discover_request_id` | no | Correlation id for the discover exchange |
+| `pinned_public_key_id` | no | Client-pinned `public_key_id` / `emitter.key_id` expected for this server |
+| `pinned_key_fingerprint` | no | `sha256:` hex of the raw public key bytes the client trusts |
+| `pinned_emitter_name` | no | Optional pin of `emitter.name` |
+| `transport` | no | `stdio` \| `http` \| `sse` \| `other` — informational; does not change who signs |
 
-NegotiationRecord is **client-local evidence of advertisement**, not a server-signed claim. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement.
+NegotiationRecord is **client-local evidence of advertisement and trust pins**, not a server-signed claim. Key pins are **out-of-band**: the server MUST NOT be treated as authoritative for which public key the client trusts. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement and pins.
 
 Schema: https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/schema/toa-negotiation-0.1.schema.json
 
@@ -386,8 +390,10 @@ Given a NegotiationRecord and a set of attestations for the same `server_id` / t
 | `true` | yes (disposition delivered / layers pass) | Positive evidence |
 | `true` | yes (disposition failed/refused/unavailable or failing layers) | **Negative evidence** (§14) |
 | `true` | no for a call that required attach | **Attestation gap** — distinct from “never supported TOA”; MUST NOT be collapsed into (1) |
+| `true` | yes, but verifier has no trusted key | **`key_unavailable`** — MUST NOT be collapsed into attestation gap |
+| `true` | yes, but key/fingerprint does not match pin (or signature fails under the pinned key) | **`untrusted_key`** — MUST NOT be collapsed into attestation gap |
 
-Verifiers MUST treat “attestation gap” as a different outcome class from “server never advertised TOA.”
+Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, and `untrusted_key` as different outcome classes.
 
 ---
 
@@ -419,6 +425,23 @@ A cryptographically valid attestation with `disposition` in (`failed`, `refused`
 
 Servers that advertise TOA and then go silent on failure are distinguishable from non-TOA servers **only if** clients persist NegotiationRecords (§13). Spec-conformant servers do not rely on that distinction: they emit signed negative outcomes (§14.1–14.2) instead of silence.
 
+## 15. Trust anchors, revocation, and transport
+
+TOA does **not** define a public-key infrastructure. Offline verify requires the verifier to already hold a trusted public key for the emitter.
+
+### 15.1 Key distribution and pinning
+
+- Clients/gateways configure trust anchors **out of band**.
+- At capability exchange, clients SHOULD record the pin they will use for this server on the NegotiationRecord (`pinned_public_key_id`, `pinned_key_fingerprint`, optional `pinned_emitter_name`).
+- A signature failure or missing trusted key MUST be classified as `untrusted_key` or `key_unavailable`, not as `attestation_gap`.
+
+### 15.2 Revocation of already-signed evidence
+
+Default policy: **`valid_at_observed_at`**. If the signing key was not revoked at `observed_at`, a cryptographically valid signature remains historically acceptable even if the key is later revoked. Verifiers MAY apply stricter `invalid_if_revoked_now` and MUST name that policy. TOA does not mandate CRL/OCSP or a key server.
+
+### 15.3 Stdio and other transports
+
+Transport does not choose the signer. The **emitter** key signs. For `emitter_role: server`, the key belongs to the process operator even when the client spawned a stdio subprocess. NegotiationRecord `transport: "stdio"` is informational only.
 
 ### Evidence format summary (`toa/0.1`)
 

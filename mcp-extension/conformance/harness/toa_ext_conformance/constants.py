@@ -27,6 +27,11 @@ DEFAULT_MAX_AGE_SECONDS = 604800
 CONFORMANCE_EMITTER_NAME = "toa-conformance"
 CONFORMANCE_KEY_ID = "test-v1"
 
+# Wall-clock independent "now" for golden fixtures dated 2026-09-01.
+from datetime import datetime, timezone
+
+FIXTURE_CLOCK = datetime(2026, 9, 1, 13, 0, 0, tzinfo=timezone.utc)
+
 # conformance/ is the parent of harness/
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONFORMANCE_ROOT = HARNESS_ROOT.parent

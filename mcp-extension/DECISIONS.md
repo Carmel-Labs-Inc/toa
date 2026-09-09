@@ -155,6 +155,11 @@ Only Ed25519 verify is implemented today; unknown algs fail closed.
 **Path-complete (same day):** SDK attach hashes call args; client parses
 `requireArgsHash`; harness T14–T15 PASS; JS node tests for hash/alg.
 
+**Key pin / trust (2026-09-09):** NegotiationRecord optional pin fields;
+offline classes `key_unavailable` / `untrusted_key` ≠ `attestation_gap`;
+default revocation `valid_at_observed_at`; stdio signer = emitter key (§15);
+harness T16 PASS.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

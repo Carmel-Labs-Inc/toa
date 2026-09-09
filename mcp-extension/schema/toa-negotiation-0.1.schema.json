@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentstatus.dev/schemas/toa/toa-negotiation-0.1.json",
   "title": "TOA NegotiationRecord",
-  "description": "Client/gateway record of whether a server advertised dev.agentstatus/toa at capability exchange. Makes offline absence interpretable.",
+  "description": "Client/gateway record of whether a server advertised dev.agentstatus/toa at capability exchange, plus optional out-of-band key pins. Makes offline absence and key-unavailability interpretable.",
   "type": "object",
   "required": [
     "spec",
@@ -25,6 +25,24 @@
       "type": ["object", "null"],
       "additionalProperties": true
     },
-    "discover_request_id": { "type": ["string", "null"] }
+    "discover_request_id": { "type": ["string", "null"] },
+    "pinned_public_key_id": {
+      "type": ["string", "null"],
+      "description": "Client-pinned public_key_id / emitter.key_id expected for this server's attestations."
+    },
+    "pinned_key_fingerprint": {
+      "type": ["string", "null"],
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "sha256: hex of the raw public key bytes the client trusts for this server."
+    },
+    "pinned_emitter_name": {
+      "type": ["string", "null"],
+      "description": "Optional pin of emitter.name (often with requireEmitter)."
+    },
+    "transport": {
+      "type": ["string", "null"],
+      "enum": ["stdio", "http", "sse", "other", null],
+      "description": "Transport used for this peer. Stdio does not change who signs; the emitter key does."
+    }
   }
 }

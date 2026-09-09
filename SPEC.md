@@ -74,3 +74,5 @@ POST https://api.rora.carmel.so/api/rora/public/toa/verify
 ## Trust model
 
 A valid signature proves **the named emitter asserted these grades**. It does not prove the MCP server is honest, and it does not replace MCP itself.
+
+Trust anchors are configured **out of band**. Clients SHOULD record pins on the NegotiationRecord (`pinned_public_key_id` / `pinned_key_fingerprint`). Missing key or pin mismatch is `key_unavailable` / `untrusted_key`, not an attestation gap. Default revocation policy is `valid_at_observed_at` (see MCP extension draft §15).

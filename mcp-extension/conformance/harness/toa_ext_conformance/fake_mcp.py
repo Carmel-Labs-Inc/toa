@@ -128,10 +128,18 @@ class FakeMcpClient:
         toa: Optional[ClientToaSettings] = None,
         advertise_toa: bool = True,
         server_id: str = "toa-conformance-fake",
+        pinned_public_key_id: Optional[str] = None,
+        pinned_key_fingerprint: Optional[str] = None,
+        pinned_emitter_name: Optional[str] = None,
+        transport: Optional[str] = None,
     ):
         self.toa = toa
         self.advertise_toa = advertise_toa and toa is not None
         self.server_id = server_id
+        self.pinned_public_key_id = pinned_public_key_id
+        self.pinned_key_fingerprint = pinned_key_fingerprint
+        self.pinned_emitter_name = pinned_emitter_name
+        self.transport = transport
         self.server_capabilities: Dict[str, Any] = {}
         self.negotiation_record: Optional[Dict[str, Any]] = None
 
@@ -158,6 +166,10 @@ class FakeMcpClient:
             init,
             server_id=self.server_id,
             client_settings=client_cap,
+            pinned_public_key_id=self.pinned_public_key_id,
+            pinned_key_fingerprint=self.pinned_key_fingerprint,
+            pinned_emitter_name=self.pinned_emitter_name,
+            transport=self.transport,
         )
         return init
 
