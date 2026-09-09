@@ -9,7 +9,7 @@ server attach policy says so — including failure / isError paths (§14).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from mcp.server.extension import CallNext, Extension
 from mcp.server.context import ServerRequestContext
@@ -24,6 +24,12 @@ from .attach import (
     should_attach,
 )
 from .binding import EXTENSION_ID, ClientSettings
+from .negotiation import (
+    KeyMaterial,
+    key_fingerprint,
+    negotiation_from_initialize,
+    validate_negotiation_record,
+)
 
 PASS_LAYERS = {
     "reach": "pass",
@@ -206,3 +212,158 @@ def default_conformance_public_key() -> Path:
         / "keys"
         / "toa-conformance-test-v1.json"
     )
+
+
+def _protocol_version_str(client: Any) -> str:
+    raw = getattr(client, "protocol_version", None)
+    if raw is None:
+        raise ValueError("client has no protocol_version; connect/discover first")
+    if isinstance(raw, str) and raw and not raw.startswith("ProtocolVersion."):
+        return raw
+    text = str(raw)
+    # ProtocolVersion.V2026_07_28 → 2026-07-28
+    leaf = text.rsplit(".", 1)[-1]
+    if leaf.startswith("V") and "_" in leaf:
+        return leaf[1:].replace("_", "-")
+    return text
+
+
+def _capabilities_dict(client: Any) -> Dict[str, Any]:
+    caps = getattr(client, "server_capabilities", None)
+    if caps is None:
+        raise ValueError("client has no server_capabilities; connect/discover first")
+    if hasattr(caps, "model_dump"):
+        return caps.model_dump(mode="json", exclude_none=False)
+    if isinstance(caps, Mapping):
+        return dict(caps)
+    raise TypeError(f"unsupported server_capabilities type: {type(caps)}")
+
+
+def _server_id_from_client(client: Any, override: Optional[str] = None) -> str:
+    if override:
+        return override
+    info = getattr(client, "server_info", None)
+    if info is not None:
+        name = getattr(info, "name", None)
+        if isinstance(name, str) and name:
+            return name
+        if isinstance(info, Mapping) and info.get("name"):
+            return str(info["name"])
+    return "mcp-server"
+
+
+def initialize_snapshot_from_client(client: Any) -> Dict[str, Any]:
+    """Build an initialize/discover-shaped dict from a connected MCP Client."""
+    caps = _capabilities_dict(client)
+    snapshot: Dict[str, Any] = {
+        "protocolVersion": _protocol_version_str(client),
+        "capabilities": caps,
+    }
+    info = getattr(client, "server_info", None)
+    if info is not None:
+        if hasattr(info, "model_dump"):
+            snapshot["serverInfo"] = info.model_dump(mode="json", exclude_none=True)
+        elif isinstance(info, Mapping):
+            snapshot["serverInfo"] = dict(info)
+    return snapshot
+
+
+def record_negotiation_from_client(
+    client: Any,
+    *,
+    server_id: Optional[str] = None,
+    client_settings: Optional[Mapping[str, Any]] = None,
+    public_key: Optional[KeyMaterial] = None,
+    pinned_public_key_id: Optional[str] = None,
+    pinned_emitter_name: Optional[str] = None,
+    pinned_key_fingerprint: Optional[str] = None,
+    transport: Optional[str] = None,
+    discover_request_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Persist a NegotiationRecord from a connected official MCP Client.
+
+    Call after context enter / discover. Pins are client trust config (out of
+    band): pass ``public_key`` to auto-fill ``pinned_key_fingerprint``.
+    """
+    if pinned_key_fingerprint is None and public_key is not None:
+        pinned_key_fingerprint = key_fingerprint(public_key)
+
+    # Prefer explicit client_settings; else pull TOA advertise() settings if present.
+    settings = client_settings
+    if settings is None:
+        exts = getattr(client, "extensions", None) or []
+        for ext in exts:
+            ident = getattr(ext, "identifier", None) or getattr(ext, "id", None)
+            if ident == EXTENSION_ID:
+                raw = getattr(ext, "settings", None)
+                if callable(raw):
+                    raw = raw()
+                if isinstance(raw, Mapping):
+                    settings = dict(raw)
+                break
+
+    record = negotiation_from_initialize(
+        initialize_snapshot_from_client(client),
+        server_id=_server_id_from_client(client, server_id),
+        client_settings=dict(settings) if settings is not None else None,
+        discover_request_id=discover_request_id,
+        pinned_public_key_id=pinned_public_key_id,
+        pinned_key_fingerprint=pinned_key_fingerprint,
+        pinned_emitter_name=pinned_emitter_name,
+        transport=transport,
+    )
+    shape = validate_negotiation_record(record)
+    if not shape.get("valid"):
+        raise ValueError(f"invalid NegotiationRecord: {shape}")
+    return record
+
+
+class ToaClientNegotiation:
+    """
+    Small client-side store: capture NegotiationRecord (+ pins) once per session.
+
+    Usage::
+
+        neg = ToaClientNegotiation(
+            public_key=PUB,
+            pinned_public_key_id="test-v1",
+            pinned_emitter_name="toa-conformance",
+            transport="stdio",
+        )
+        async with Client(server) as client:
+            rec = neg.capture(client)
+    """
+
+    def __init__(
+        self,
+        *,
+        server_id: Optional[str] = None,
+        client_settings: Optional[Mapping[str, Any]] = None,
+        public_key: Optional[KeyMaterial] = None,
+        pinned_public_key_id: Optional[str] = None,
+        pinned_emitter_name: Optional[str] = None,
+        pinned_key_fingerprint: Optional[str] = None,
+        transport: Optional[str] = None,
+    ) -> None:
+        self.server_id = server_id
+        self.client_settings = client_settings
+        self.public_key = public_key
+        self.pinned_public_key_id = pinned_public_key_id
+        self.pinned_emitter_name = pinned_emitter_name
+        self.pinned_key_fingerprint = pinned_key_fingerprint
+        self.transport = transport
+        self.record: Optional[Dict[str, Any]] = None
+
+    def capture(self, client: Any) -> Dict[str, Any]:
+        self.record = record_negotiation_from_client(
+            client,
+            server_id=self.server_id,
+            client_settings=self.client_settings,
+            public_key=self.public_key,
+            pinned_public_key_id=self.pinned_public_key_id,
+            pinned_emitter_name=self.pinned_emitter_name,
+            pinned_key_fingerprint=self.pinned_key_fingerprint,
+            transport=self.transport,
+        )
+        return self.record
