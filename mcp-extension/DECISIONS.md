@@ -169,6 +169,13 @@ discover (not FakeMcp-only). E2E asserts pin match + absence class.
 (not positive). `revocation_policy` is per-verifier on NegotiationRecord;
 unspecified + revoke timestamp fails closed. Harness T17–T18 PASS.
 
+**Revocation source + signed NegotiationRecord (2026-09-12):**
+`invalid_if_revoked_now` with no freshness source is
+`revocation_status_unavailable` (not accept, not `key_not_revoked`).
+Ledger policy may still accept when no revoke time is known.
+Observer-signed NegotiationRecord is SHOULD when the record is audit
+evidence; server MUST NOT sign it. Harness T19 PASS.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

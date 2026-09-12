@@ -28,6 +28,7 @@ ABSENCE_NO_ATTESTATION_OPTIONAL = "no_attestation_optional"
 ABSENCE_KEY_UNAVAILABLE = "key_unavailable"
 ABSENCE_UNTRUSTED_KEY = "untrusted_key"
 ABSENCE_INCONSISTENT = "inconsistent_claims"
+ABSENCE_REVOCATION_UNAVAILABLE = "revocation_status_unavailable"
 
 # Both policies are defined. Neither is inherited when the field is absent.
 REVOCATION_VALID_AT_OBSERVED = "valid_at_observed_at"
@@ -246,6 +247,13 @@ def revocation_policy_from_record(negotiation: Optional[Mapping[str, Any]]) -> O
     return str(policy)
 
 
+def _revocation_source_consulted(
+    revocation_checked: bool, key_revoked_at: Optional[Any]
+) -> bool:
+    """True if the verifier consulted a freshness source, not merely omitted one."""
+    return bool(revocation_checked) or key_revoked_at is not None
+
+
 def evaluate_revocation(
     *,
     observed_at: Any,
@@ -253,6 +261,7 @@ def evaluate_revocation(
     policy: Optional[str] = None,
     now: Optional[datetime] = None,
     negotiation: Optional[Mapping[str, Any]] = None,
+    revocation_checked: bool = False,
 ) -> Dict[str, Any]:
     """
     Decide whether already-signed evidence remains acceptable after key revoke.
@@ -260,9 +269,14 @@ def evaluate_revocation(
     Both policies are defined. Neither is a global default:
 
     - ``valid_at_observed_at``: historically acceptable if the key was still
-      trusted at ``observed_at`` (ledger / archive).
+      trusted at ``observed_at`` (ledger / archive). No known revoke MAY accept.
     - ``invalid_if_revoked_now``: reject if the key is revoked at verify time
-      (action gates).
+      (action gates). Requires a verifier-local revocation source.
+
+    A source was consulted if ``revocation_checked`` is true or ``key_revoked_at``
+    is present. ``invalid_if_revoked_now`` with no source MUST return
+    ``revocation_status_unavailable`` (not acceptable). Missing status MUST NOT
+    be treated as ``key_not_revoked``.
 
     Policy comes from ``policy`` or ``negotiation.revocation_policy``. If a
     revoke timestamp is present and no policy was declared, return
@@ -270,48 +284,57 @@ def evaluate_revocation(
     silently pick different readings.
     """
     declared = policy if policy is not None else revocation_policy_from_record(negotiation)
+    source_consulted = _revocation_source_consulted(revocation_checked, key_revoked_at)
+    base = {"policy": declared, "source_consulted": source_consulted}
+
+    if declared == REVOCATION_INVALID_IF_REVOKED_NOW and not source_consulted:
+        return {
+            "acceptable": False,
+            "reason": ABSENCE_REVOCATION_UNAVAILABLE,
+            **base,
+        }
 
     if key_revoked_at is None:
-        return {"acceptable": True, "reason": "key_not_revoked", "policy": declared}
+        return {"acceptable": True, "reason": "key_not_revoked", **base}
 
     if declared is None:
         return {
             "acceptable": False,
             "reason": "revocation_policy_unspecified",
-            "policy": None,
+            **base,
         }
     if declared not in REVOCATION_POLICIES:
         return {
             "acceptable": False,
             "reason": "unknown_revocation_policy",
-            "policy": declared,
+            **base,
         }
 
     revoked = _parse_rfc3339(key_revoked_at)
     observed = _parse_rfc3339(observed_at)
     if revoked is None:
-        return {"acceptable": False, "reason": "invalid_key_revoked_at", "policy": declared}
+        return {"acceptable": False, "reason": "invalid_key_revoked_at", **base}
     if observed is None:
-        return {"acceptable": False, "reason": "invalid_observed_at", "policy": declared}
+        return {"acceptable": False, "reason": "invalid_observed_at", **base}
 
     if declared == REVOCATION_INVALID_IF_REVOKED_NOW:
         clock = now or datetime.now(timezone.utc)
         if clock.tzinfo is None:
             clock = clock.replace(tzinfo=timezone.utc)
         if clock >= revoked:
-            return {"acceptable": False, "reason": "key_revoked_now", "policy": declared}
-        return {"acceptable": True, "reason": "key_not_yet_revoked", "policy": declared}
+            return {"acceptable": False, "reason": "key_revoked_now", **base}
+        return {"acceptable": True, "reason": "key_not_yet_revoked", **base}
 
     if observed >= revoked:
         return {
             "acceptable": False,
             "reason": "key_already_revoked_at_observed_at",
-            "policy": REVOCATION_VALID_AT_OBSERVED,
+            **base,
         }
     return {
         "acceptable": True,
         "reason": "valid_as_of_observed_at",
-        "policy": REVOCATION_VALID_AT_OBSERVED,
+        **base,
     }
 
 
@@ -358,6 +381,7 @@ def classify_absence(
     public_key_available: bool = True,
     key_matches_pin: Optional[bool] = None,
     verify_reason: Optional[str] = None,
+    revocation_result: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Offline outcome class for one call (§13.3 / §15).
@@ -365,11 +389,15 @@ def classify_absence(
     Returns ``{"class": ..., "reason": ...}`` where class is one of:
     ``outside_toa``, ``attestation_gap``, ``positive_evidence``,
     ``negative_evidence``, ``no_attestation_optional``,
-    ``key_unavailable``, ``untrusted_key``, ``inconsistent_claims``.
+    ``key_unavailable``, ``untrusted_key``, ``inconsistent_claims``,
+    ``revocation_status_unavailable``.
 
-    ``key_unavailable`` / ``untrusted_key`` MUST NOT be collapsed into
-    ``attestation_gap``. ``disposition=delivered`` plus a failing core
-    layer is ``inconsistent_claims``, not ``positive_evidence``.
+    ``key_unavailable`` / ``untrusted_key`` / ``revocation_status_unavailable``
+    MUST NOT be collapsed into ``attestation_gap``. ``disposition=delivered``
+    plus a failing core layer is ``inconsistent_claims``, not
+    ``positive_evidence``. Revocation is not inferred from the record alone;
+    pass ``revocation_result`` from ``evaluate_revocation`` or
+    ``verify_reason="revocation_status_unavailable"``.
     """
     shape = validate_negotiation_record(negotiation)
     if not shape.get("valid"):
@@ -434,6 +462,17 @@ def classify_absence(
             "reason": str(verify_reason),
         }
 
+    revoke_reason = None
+    if isinstance(revocation_result, Mapping):
+        revoke_reason = revocation_result.get("reason")
+    if verify_reason == ABSENCE_REVOCATION_UNAVAILABLE or (
+        revoke_reason == ABSENCE_REVOCATION_UNAVAILABLE
+    ):
+        return {
+            "class": ABSENCE_REVOCATION_UNAVAILABLE,
+            "reason": ABSENCE_REVOCATION_UNAVAILABLE,
+        }
+
     if document_claims_are_inconsistent(document):
         return {
             "class": ABSENCE_INCONSISTENT,
@@ -445,11 +484,12 @@ def classify_absence(
 
 
 def classes_are_distinct() -> Sequence[str]:
-    """Sanity helper: gap ≠ outside ≠ key failures ≠ inconsistent."""
+    """Sanity helper: gap ≠ outside ≠ key failures ≠ revoke-unknown ≠ inconsistent."""
     return (
         ABSENCE_OUTSIDE_TOA,
         ABSENCE_ATTESTATION_GAP,
         ABSENCE_KEY_UNAVAILABLE,
         ABSENCE_UNTRUSTED_KEY,
         ABSENCE_INCONSISTENT,
+        ABSENCE_REVOCATION_UNAVAILABLE,
     )

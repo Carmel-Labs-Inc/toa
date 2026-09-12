@@ -1,4 +1,4 @@
-"""Pytest entry for T1–T18. SKIP is allowed until fixtures/`toa_ext` land."""
+"""Pytest entry for T1–T19. SKIP is allowed until fixtures/`toa_ext` land."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from toa_ext_conformance.runner import run_all, run_scenario
 from toa_ext_conformance.types import Status
 
 
-SCENARIO_IDS = [f"T{i}" for i in range(1, 19)]
+SCENARIO_IDS = [f"T{i}" for i in range(1, 20)]
 
 
 @pytest.mark.parametrize("scenario_id", SCENARIO_IDS)
@@ -21,9 +21,9 @@ def test_scenario(scenario_id: str):
     )
 
 
-def test_run_all_has_eighteen_results():
+def test_run_all_has_nineteen_results():
     results = run_all()
-    assert len(results) == 18
+    assert len(results) == 19
     assert {r.scenario_id for r in results} == set(SCENARIO_IDS)
     fails = [r for r in results if r.status == Status.FAIL]
     assert fails == [], f"unexpected failures: {[(r.scenario_id, r.reason, r.detail) for r in fails]}"
