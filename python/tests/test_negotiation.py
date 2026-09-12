@@ -11,6 +11,7 @@ from toa_ext.negotiation import (
     ABSENCE_NEGATIVE,
     ABSENCE_OUTSIDE_TOA,
     ABSENCE_POSITIVE,
+    ABSENCE_REVOCATION_UNAVAILABLE,
     ABSENCE_UNTRUSTED_KEY,
     NEGOTIATION_SPEC,
     REVOCATION_INVALID_IF_REVOKED_NOW,
@@ -239,3 +240,54 @@ def test_evaluate_revocation_requires_explicit_policy_when_revoked():
     no_revoke = evaluate_revocation(observed_at="2026-01-01T00:00:00Z")
     assert no_revoke["acceptable"] is True
     assert no_revoke["reason"] == "key_not_revoked"
+
+
+def test_gate_without_revocation_source_is_unavailable_not_accept():
+    """Sattyam #3350: invalid_if_revoked_now with no source must not pass."""
+    gate = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    assert gate["acceptable"] is False
+    assert gate["reason"] == ABSENCE_REVOCATION_UNAVAILABLE
+    assert gate["source_consulted"] is False
+
+    checked_clean = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+        revocation_checked=True,
+    )
+    assert checked_clean["acceptable"] is True
+    assert checked_clean["reason"] == "key_not_revoked"
+    assert checked_clean["source_consulted"] is True
+
+    ledger = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        policy=REVOCATION_VALID_AT_OBSERVED,
+    )
+    assert ledger["acceptable"] is True
+    assert ledger["reason"] == "key_not_revoked"
+
+    rec = build_negotiation_record(
+        server_id="a",
+        protocol_version="2026-07-28",
+        server_advertised_toa=True,
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    classified = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document={"disposition": "delivered", "layers": {"functional": "pass"}},
+        revocation_result=gate,
+    )
+    gap = classify_absence(negotiation=rec, attestation_present=False, attach_expected=True)
+    untrusted = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document={"disposition": "delivered"},
+        key_matches_pin=False,
+    )
+    assert classified["class"] == ABSENCE_REVOCATION_UNAVAILABLE
+    assert classified["class"] != gap["class"]
+    assert classified["class"] != untrusted["class"]
+    assert classified["class"] != ABSENCE_POSITIVE

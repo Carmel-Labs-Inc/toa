@@ -203,6 +203,7 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T16 key pin / verify classes | harness PASS |
 | T17 inconsistent disposition/layers | harness PASS |
 | T18 explicit revocation policy | harness PASS |
+| T19 revocation status unavailable | harness PASS |
 
 ---
 
@@ -299,3 +300,16 @@ Fixtures: [`fixtures/`](./fixtures/).
 1. Revoke timestamp + no `revocation_policy` → `revocation_policy_unspecified` (not acceptable)
 2. Record with `valid_at_observed_at` accepts evidence observed before revoke
 3. Record with `invalid_if_revoked_now` rejects after the key is revoked now
+
+---
+
+## T19 — `toa-revocation-status-unavailable`
+
+**Intent:** An action gate that declared `invalid_if_revoked_now` and has no revocation source must not silently behave as `valid_at_observed_at`. Missing status is a distinct class.
+
+**Checks:**
+
+1. Gate policy + no source → `revocation_status_unavailable` (not acceptable)
+2. Gate policy + `revocation_checked=true` + no revoke timestamp → accept (`key_not_revoked`)
+3. Ledger policy + no source → MAY accept
+4. Offline class `revocation_status_unavailable` ≠ `attestation_gap` ≠ `untrusted_key` ≠ `positive_evidence`

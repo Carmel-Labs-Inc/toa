@@ -1,4 +1,4 @@
-"""T1–T18 scenario implementations (in-process fake MCP)."""
+"""T1–T19 scenario implementations (in-process fake MCP)."""
 
 from __future__ import annotations
 
@@ -1054,6 +1054,96 @@ def scenario_t18_explicit_revocation_policy() -> ScenarioResult:
     )
 
 
+def scenario_t19_revocation_source_required_for_gate() -> ScenarioResult:
+    """T19 — invalid_if_revoked_now with no freshness source is unavailable, not accept."""
+    sid, name = "T19", "toa-revocation-status-unavailable"
+    from toa_ext.negotiation import (
+        ABSENCE_ATTESTATION_GAP,
+        ABSENCE_POSITIVE,
+        ABSENCE_REVOCATION_UNAVAILABLE,
+        ABSENCE_UNTRUSTED_KEY,
+        REVOCATION_INVALID_IF_REVOKED_NOW,
+        REVOCATION_VALID_AT_OBSERVED,
+        classify_absence,
+        evaluate_revocation,
+        negotiation_from_initialize,
+    )
+
+    gate = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-gate-offline",
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    no_source = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        negotiation=gate,
+    )
+    if no_source.get("acceptable") or no_source.get("reason") != ABSENCE_REVOCATION_UNAVAILABLE:
+        return _fail(sid, name, "gate_without_source_must_be_unavailable", detail=str(no_source))
+
+    checked = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        negotiation=gate,
+        revocation_checked=True,
+    )
+    if not checked.get("acceptable") or checked.get("reason") != "key_not_revoked":
+        return _fail(sid, name, "checked_source_not_revoked_should_accept", detail=str(checked))
+
+    ledger = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-ledger-offline",
+        revocation_policy=REVOCATION_VALID_AT_OBSERVED,
+    )
+    ledger_ok = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        negotiation=ledger,
+    )
+    if not ledger_ok.get("acceptable"):
+        return _fail(sid, name, "ledger_may_accept_without_source", detail=str(ledger_ok))
+
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    classified = classify_absence(
+        negotiation=gate,
+        attestation_present=True,
+        document=doc,
+        revocation_result=no_source,
+    )
+    gap = classify_absence(negotiation=gate, attestation_present=False, attach_expected=True)
+    untrusted = classify_absence(
+        negotiation=gate,
+        attestation_present=True,
+        document=doc,
+        key_matches_pin=False,
+    )
+    if classified.get("class") != ABSENCE_REVOCATION_UNAVAILABLE:
+        return _fail(sid, name, "expected_revocation_status_unavailable", detail=str(classified))
+    if classified["class"] in {
+        ABSENCE_ATTESTATION_GAP,
+        ABSENCE_UNTRUSTED_KEY,
+        ABSENCE_POSITIVE,
+        gap["class"],
+        untrusted["class"],
+    }:
+        return _fail(sid, name, "unavailable_collapsed_into_another_class", detail=str(classified))
+
+    return _pass(
+        sid,
+        name,
+        checks={
+            "no_source": "PASS",
+            "checked_clean": "PASS",
+            "ledger": "PASS",
+            "class": ABSENCE_REVOCATION_UNAVAILABLE,
+        },
+    )
+
+
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T1", "toa-capability-advertisement", scenario_t1_advertisement),
     ("T2", "toa-attach-on-require", scenario_t2_attach_on_require),
@@ -1073,4 +1163,5 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T16", "toa-key-pin-and-verify-classes", scenario_t16_key_pin_classes),
     ("T17", "toa-inconsistent-disposition-layers", scenario_t17_inconsistent_disposition_layers),
     ("T18", "toa-explicit-revocation-policy", scenario_t18_explicit_revocation_policy),
+    ("T19", "toa-revocation-status-unavailable", scenario_t19_revocation_source_required_for_gate),
 ]

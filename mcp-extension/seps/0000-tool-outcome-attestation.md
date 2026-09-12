@@ -339,7 +339,7 @@ Optional signed `args_hash` MAY bind a digest of arguments without embedding the
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, T16 key-pin, T17 inconsistent-claims, and T18 explicit revocation-policy), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, T16 key-pin, T17 inconsistent-claims, T18 explicit revocation-policy, and T19 revocation-source), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
 
 ---
 
@@ -377,7 +377,16 @@ Clients and gateways that perform offline or post-hoc verification MUST persist 
 | `transport` | no | `stdio` \| `http` \| `sse` \| `other` — informational; does not change who signs |
 | `revocation_policy` | no | Per-verifier revoke reading: `valid_at_observed_at` \| `invalid_if_revoked_now`. Absent means unspecified. |
 
-NegotiationRecord is **client-local evidence of advertisement and trust pins**, not a server-signed claim. Key pins are **out-of-band**: the server MUST NOT be treated as authoritative for which public key the client trusts. Implementations MAY additionally obtain an observer-signed copy; that is optional and does not replace the client obligation to record advertisement and pins.
+NegotiationRecord is **client-local evidence of advertisement and trust pins**, not a server-signed claim. Key pins are **out-of-band**: the server MUST NOT be treated as authoritative for which public key the client trusts. The server MUST NOT sign the NegotiationRecord.
+
+The record is now load-bearing: it decides `outside_toa` vs `attestation_gap` and holds the pins that decide `untrusted_key`. The party that holds an unsigned copy can rewrite those fields after the fact.
+
+- Clients and gateways MUST persist the record locally at discover time.
+- When the record will be used as audit evidence or consumed by a third-party verifier, implementations SHOULD persist an observer-signed copy (same claim set, signed by an observer/emitter key the auditor already trusts).
+- Same-process local-only clients that never export the record MAY keep it unsigned.
+- An observer-signed copy does not replace the client obligation to record advertisement and pins at discover time.
+
+Threat model: after an incident, the only unsigned copy of “did this server advertise TOA, and which key did we trust” must not sit solely with the party being asked to explain the incident.
 
 Schema: https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/schema/toa-negotiation-0.1.schema.json
 
@@ -394,8 +403,9 @@ Given a NegotiationRecord and a set of attestations for the same `server_id` / t
 | `true` | no for a call that required attach | **Attestation gap** — distinct from “never supported TOA”; MUST NOT be collapsed into (1) |
 | `true` | yes, but verifier has no trusted key | **`key_unavailable`** — MUST NOT be collapsed into attestation gap |
 | `true` | yes, but key/fingerprint does not match pin (or signature fails under the pinned key) | **`untrusted_key`** — MUST NOT be collapsed into attestation gap |
+| `true` | yes, but `revocation_policy=invalid_if_revoked_now` and no revocation source was consulted | **`revocation_status_unavailable`** — MUST NOT accept; MUST NOT collapse into attestation gap, `untrusted_key`, or `key_revoked_now` |
 
-Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, `untrusted_key`, and `inconsistent_claims` as different outcome classes.
+Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, `untrusted_key`, `inconsistent_claims`, and `revocation_status_unavailable` as different outcome classes.
 
 ---
 
@@ -448,7 +458,13 @@ Both readings are defined. **Neither is a global default.** Verifiers that evalu
 | `valid_at_observed_at` | Was the key still trusted at `observed_at`? | Ledger / archive. Rotation must not erase history. |
 | `invalid_if_revoked_now` | Is the key revoked at verification time? | Action gates. Fail closed on current revoke. |
 
-If `revocation_policy` is absent and a revoke timestamp is in play, verifiers MUST fail closed (`revocation_policy_unspecified`). They MUST NOT inherit an implicit default. TOA does not mandate CRL/OCSP or a key server.
+`invalid_if_revoked_now` requires a verifier-local revocation freshness source (org key list, CRL, OCSP, or equivalent). TOA does not mandate CRL/OCSP or a key server. A source was consulted if the verifier has a revoke timestamp **or** explicitly marks the check as performed.
+
+- If `revocation_policy` is `invalid_if_revoked_now` and no source was consulted, verifiers MUST fail closed (`revocation_status_unavailable`). They MUST NOT accept. They MUST NOT treat missing status as `key_not_revoked`, `attestation_gap`, `untrusted_key`, or `key_revoked_now`.
+- If `revocation_policy` is `invalid_if_revoked_now`, a source was consulted, and that source reports the key is not revoked, the evidence MAY accept (`key_not_revoked`).
+- If `revocation_policy` is `valid_at_observed_at` and no revoke timestamp is known, verifiers MAY accept (ledger: no evidence of revoke at `observed_at`).
+- If `revocation_policy` is absent and a revoke timestamp is in play, verifiers MUST fail closed (`revocation_policy_unspecified`). They MUST NOT inherit an implicit default.
+- Two verifiers MUST NOT silently mix the two readings.
 
 ### 15.3 Stdio and other transports
 
