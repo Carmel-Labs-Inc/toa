@@ -27,4 +27,3 @@ pytest tests/test_e2e_mcp_sdk.py -v
 ```
 
 Conformance golden fixtures live in `../mcp-extension/conformance/fixtures/`.
-Security IG outreach draft: `../mcp-extension/docs/security-ig-outreach.md`.

@@ -14,7 +14,6 @@ The parent repository still owns the portable evidence format (`toa/0.1`) and of
 3. [`specification/draft/toa-extension.md`](./specification/draft/toa-extension.md) — RFC 2119 wire spec
 4. [`DECISIONS.md`](./DECISIONS.md) — dated decisions closing open questions
 5. [`conformance/SCENARIOS.md`](./conformance/SCENARIOS.md) — Tasks-quality scenario plan
-6. [`docs/security-ig-outreach.md`](./docs/security-ig-outreach.md) — Security IG Discord / Discussion draft
 
 ## Extension ID
 
@@ -38,7 +37,7 @@ Graduation to `io.modelcontextprotocol/toa` requires MCP governance acceptance �
 - [x] Conformance harness T1–T10 (in-process) — **10/10 PASS**
 - [x] Reference attach path (`toa_ext.attach` + MCP SDK `ToaAttachExtension`)
 - [x] Full E2E vs official MCP Python SDK 2.1+ (2026-07-28 advertise/attach/require/fail-closed + stdio subprocess) — `python/tests/test_e2e_mcp_sdk.py`
-- [ ] Security IG review (outreach draft ready; post when you want)
+- [ ] Security IG review
 - [ ] Official MCP conformance PR (`--suite extensions`) after IG path
 
 ## Relationship to AgentStatus
