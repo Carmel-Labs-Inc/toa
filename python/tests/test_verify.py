@@ -116,6 +116,17 @@ def test_max_age_accepts_fresh():
     assert result["valid"] is True
 
 
+def test_naive_observed_at_fails_closed():
+    from toa_verify.verify import parse_observed_at
+
+    assert parse_observed_at("2026-09-20T22:45:12") is None
+    doc = json.loads((ROOT / "examples" / "signed-example.json").read_text())
+    doc["observed_at"] = "2026-09-20T22:45:12"
+    result = verify_document(doc, require_emitter="agentstatus")
+    assert result["valid"] is False
+    assert result["reason"] in {"invalid_signature", "observed_at_missing_offset"}
+
+
 def test_parse_max_age_seconds():
     from toa_verify.verify import parse_max_age_seconds
 

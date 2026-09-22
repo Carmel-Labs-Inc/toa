@@ -26,7 +26,7 @@ Paths under [`fixtures/`](./fixtures/):
 |---|---|
 | Public key | `fixtures/keys/toa-conformance-test-v1.json` |
 | Private key (TEST ONLY) | `fixtures/keys/toa-conformance-test-v1.private.json` |
-| Golden docs | `fixtures/pass_functional.json`, `fail_functional.json`, `expired.json`, `wrong_tool.json`, `server_role.json`, `bad_signature.json` |
+| Golden docs | `fixtures/pass_functional.json`, `fail_functional.json`, `expired.json`, `wrong_tool.json`, `server_role.json`, `bad_signature.json`, `unicode_float.json` |
 
 - Emitter: `toa-conformance` / `key_id: test-v1`
 - Reference-mode URI scheme for local store: `fixture:<stem>` (e.g. `fixture:pass_functional`)
@@ -204,6 +204,8 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T17 inconsistent disposition/layers | harness PASS |
 | T18 explicit revocation policy | harness PASS |
 | T19 revocation status unavailable | harness PASS |
+| T20 trust inputs must be asserted | harness PASS |
+| T21 JCS + observed_at offset | harness PASS |
 
 ---
 
@@ -313,3 +315,28 @@ Fixtures: [`fixtures/`](./fixtures/).
 2. Gate policy + `revocation_checked=true` + no revoke timestamp → accept (`key_not_revoked`)
 3. Ledger policy + no source → MAY accept
 4. Offline class `revocation_status_unavailable` ≠ `attestation_gap` ≠ `untrusted_key` ≠ `positive_evidence`
+
+---
+
+## T20 — `toa-trust-inputs-must-be-asserted`
+
+**Intent:** On a record that declares require, a pin, and `invalid_if_revoked_now`, unknown trust inputs must not classify as `positive_evidence`. No new class.
+
+**Checks:**
+
+1. All defaults omitted → not positive
+2. Each of `public_key_available`, `key_matches_pin`, `verify_reason`, `revocation_result` left unknown, others asserted clean → none positive
+3. All four asserted clean → `positive_evidence`
+
+---
+
+## T21 — `toa-jcs-and-observed-at-offset`
+
+**Intent:** Python and JS verifiers agree on RFC 8785 JCS. Naive `observed_at` fails closed. Unsafe JSON integers fail closed.
+
+**Checks:**
+
+1. JCS of `{q: "café", n: 1.0}` is identical in Python and JS (`1.0` → `1`, no `\u` escapes)
+2. Integer `2^53+1` raises `unsafe_json_integer`
+3. `observed_at` without offset is rejected
+4. Checked-in fixture `unicode_float.json` (non-ASCII `reasons`, `layers.score` `1.0`, `args_hash` of `{q:"café",n:1.0}`) verifies in both CLIs

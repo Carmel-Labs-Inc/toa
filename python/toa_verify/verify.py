@@ -1,9 +1,8 @@
 """
 Verify Tool Outcome Attestation documents (toa/0.1).
 
-Signature is over canonical JSON of the signed claim fields (sorted keys, no
-whitespace). Envelope fields signature / payload_hash / public_key_id / alg are
-not part of the signed body.
+Signature is over RFC 8785 JCS of the signed claim fields. Envelope fields
+signature / payload_hash / public_key_id / alg are not part of the signed body.
 
 `alg` defaults to Ed25519 when absent (backward compatible). Unknown algorithms
 fail closed with unsupported_algorithm. Optional signed `args_hash` binds input
@@ -20,7 +19,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 
+from .jcs import CanonicalizeError, canonical_json
+
 TOA_SPEC = "toa/0.1"
+OBSERVED_AT_OFFSET_RE = re.compile(
+    r"(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)$",
+    re.IGNORECASE,
+)
 DEFAULT_ALG = "Ed25519"
 SUPPORTED_ALGS = frozenset({DEFAULT_ALG})
 HASH_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
@@ -43,10 +48,6 @@ SIGNED_KEYS = (
 KeyMaterial = Union[str, bytes, Mapping[str, Any], Path]
 
 
-def canonical_json(payload: Mapping[str, Any]) -> bytes:
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-
-
 def claim_for_signing(document: Mapping[str, Any]) -> Dict[str, Any]:
     return {k: document[k] for k in SIGNED_KEYS if k in document}
 
@@ -62,7 +63,7 @@ def resolve_alg(document: Mapping[str, Any]) -> str:
 
 
 def args_hash_for(arguments: Mapping[str, Any]) -> str:
-    """sha256: hex of canonical JSON of the tool arguments object."""
+    """sha256: hex of RFC 8785 JCS of the tool arguments object."""
     digest = hashlib.sha256(canonical_json(dict(arguments))).hexdigest()
     return f"sha256:{digest}"
 
@@ -127,17 +128,20 @@ def parse_max_age_seconds(value: Union[str, int, float]) -> int:
 
 
 def parse_observed_at(value: Any) -> Optional[datetime]:
+    """Parse RFC 3339 ``observed_at``. Offset is required; naive values fail."""
     if not isinstance(value, str) or not value.strip():
         return None
     s = value.strip()
-    if s.endswith("Z"):
+    if not OBSERVED_AT_OFFSET_RE.search(s):
+        return None
+    if s.endswith("Z") or s.endswith("z"):
         s = s[:-1] + "+00:00"
     try:
         dt = datetime.fromisoformat(s)
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        return None
     return dt.astimezone(timezone.utc)
 
 
@@ -218,15 +222,18 @@ def verify_document(
         # Only Ed25519 is implemented today; resolve_alg already gated others.
         pub = Ed25519PublicKey.from_public_bytes(_load_public_key_bytes(key_material))
         pub.verify(base64.b64decode(signature), canonical_json(body))
+    except CanonicalizeError as exc:
+        return {"valid": False, "reason": str(exc), "claim": body}
     except InvalidSignature:
         return {"valid": False, "reason": "invalid_signature", "claim": body}
     except Exception as exc:
         return {"valid": False, "reason": f"verify_error:{exc}", "claim": body}
 
+    observed = parse_observed_at(body.get("observed_at"))
+    if observed is None:
+        return {"valid": False, "reason": "observed_at_missing_offset", "claim": body}
+
     if max_age_seconds is not None:
-        observed = parse_observed_at(body.get("observed_at"))
-        if observed is None:
-            return {"valid": False, "reason": "missing_or_invalid_observed_at", "claim": body}
         ref = now.astimezone(timezone.utc) if isinstance(now, datetime) else datetime.now(timezone.utc)
         age = (ref - observed).total_seconds()
         if age < 0:

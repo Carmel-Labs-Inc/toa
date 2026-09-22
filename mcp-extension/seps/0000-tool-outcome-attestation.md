@@ -80,7 +80,7 @@ Official MCP adoption, if any, requires a separate SEP assigning an `io.modelcon
 
 A conforming implementation MUST treat `toa/0.1` (https://github.com/Carmel-Labs-Inc/toa/blob/main/SPEC.md) as the attestation document format, including:
 
-- Signed claim field set and canonical JSON signing input
+- Signed claim field set and RFC 8785 JCS signing input (`observed_at` MUST carry a timezone offset)
 - Ed25519 signature verification
 - Layer vocabulary (`reach`, `invoke`, `functional`, `shape`, `openapi_fidelity`, `compositional`)
 
@@ -255,7 +255,7 @@ When validating a binding against client settings, implementations MUST:
 1. Parse `AttestationBinding` and resolve to a `toa/0.1` document (embed or fetch/store).
 2. Verify `spec === "toa/0.1"`.
 3. Resolve envelope `alg` (absent means `Ed25519`); if unsupported, fail (`unsupported_algorithm`).
-4. Verify signature per `toa/0.1` SPEC for that algorithm (canonical JSON over signed fields).
+4. Verify signature per `toa/0.1` SPEC for that algorithm (RFC 8785 JCS over signed fields).
 5. Verify `emitter_role` ∈ `acceptedEmitterRoles`.
 6. If `requireEmitter` is set, verify `document.emitter.name === requireEmitter`.
 7. If `maxAgeSeconds` is set, verify `observed_at` age ≤ `maxAgeSeconds`.
@@ -339,7 +339,7 @@ Optional signed `args_hash` MAY bind a digest of arguments without embedding the
 
 ## 12. Conformance
 
-A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, T16 key-pin, T17 inconsistent-claims, T18 explicit revocation-policy, and T19 revocation-source), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
+A claim of conformance to this draft MUST pass the scenarios at https://github.com/Carmel-Labs-Inc/toa/blob/main/mcp-extension/conformance/SCENARIOS.md (including T11–T13 absence/negative, T14–T15 args_hash, T16 key-pin, T17 inconsistent-claims, T18 explicit revocation-policy, T19 revocation-source, T20 trust-input assertion, and T21 JCS / observed_at), or equivalent tests once landed under `modelcontextprotocol/conformance` `--suite extensions`.
 
 ---
 
@@ -404,6 +404,9 @@ Given a NegotiationRecord and a set of attestations for the same `server_id` / t
 | `true` | yes, but verifier has no trusted key | **`key_unavailable`** — MUST NOT be collapsed into attestation gap |
 | `true` | yes, but key/fingerprint does not match pin (or signature fails under the pinned key) | **`untrusted_key`** — MUST NOT be collapsed into attestation gap |
 | `true` | yes, but `revocation_policy=invalid_if_revoked_now` and no revocation source was consulted | **`revocation_status_unavailable`** — MUST NOT accept; MUST NOT collapse into attestation gap, `untrusted_key`, or `key_revoked_now` |
+| `true` | yes, claims consistent, but a declared trust input was not asserted | **Not `positive_evidence`**. Unknown is not checked-clean. |
+
+`classify_absence` MUST NOT return `positive_evidence` unless every trust input the NegotiationRecord depends on was explicitly asserted. Defaults are unknown, not permissive.
 
 Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, `untrusted_key`, `inconsistent_claims`, and `revocation_status_unavailable` as different outcome classes.
 
@@ -474,7 +477,7 @@ Transport does not choose the signer. The **emitter** key signs. For `emitter_ro
 
 Normative schema and signing rules live in the reference repository (`SPEC.md` + JSON Schema). Summary:
 
-- Signed claim fields (canonical JSON, sorted keys, separators `,` `:`): `spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`, `args_hash`
+- Signed claim fields (RFC 8785 JCS): `spec`, `toa_id`, `tool`, `run`, `observed_at`, `layers`, `outcome_grade`, `business_outcome_ok`, `reasons`, `emitter`, and when present `disposition`, `args_hash`. `observed_at` MUST include a timezone offset. JSON integers MUST be in `[-(2^53)+1, 2^53-1]`.
 - Envelope (not signed): `signature`, `payload_hash`, `public_key_id`, `alg` (absent `alg` means Ed25519)
 - Layers: `reach`, `invoke`, `functional`, `shape`, `openapi_fidelity`, `compositional` with values `pass` | `fail` | `warn` (shape/openapi) | `n/a`
 - Optional `disposition`: `delivered` | `failed` | `refused` | `unavailable`

@@ -291,3 +291,97 @@ def test_gate_without_revocation_source_is_unavailable_not_accept():
     assert classified["class"] != gap["class"]
     assert classified["class"] != untrusted["class"]
     assert classified["class"] != ABSENCE_POSITIVE
+
+
+def test_strict_record_unknown_trust_inputs_are_not_positive():
+    """Sattyam #3350: None and checked-clean must not be the same call."""
+    rec = build_negotiation_record(
+        server_id="a",
+        protocol_version="2026-07-28",
+        server_advertised_toa=True,
+        client_settings={"require": True},
+        pinned_key_fingerprint="sha256:" + ("ab" * 32),
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    clean = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+        revocation_checked=True,
+    )
+    bare = classify_absence(negotiation=rec, attestation_present=True, document=doc)
+    assert bare["class"] != ABSENCE_POSITIVE
+
+    cases = [
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            key_matches_pin=True,
+            verify_reason="ok",
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            verify_reason="ok",
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            key_matches_pin=True,
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            key_matches_pin=True,
+            verify_reason="ok",
+        ),
+    ]
+    assert all(c["class"] != ABSENCE_POSITIVE for c in cases)
+    assert cases[0]["class"] == ABSENCE_KEY_UNAVAILABLE
+    assert cases[1]["class"] == ABSENCE_UNTRUSTED_KEY
+    assert cases[2]["class"] == ABSENCE_UNTRUSTED_KEY
+    assert cases[3]["class"] == ABSENCE_REVOCATION_UNAVAILABLE
+
+    ok = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        public_key_available=True,
+        key_matches_pin=True,
+        verify_reason="ok",
+        revocation_result=clean,
+    )
+    assert ok["class"] == ABSENCE_POSITIVE
+
+
+def test_never_advertised_pin_is_not_positive_until_asserted():
+    """Sattyam invariant applies on the unexpected-positive path too."""
+    rec = build_negotiation_record(
+        server_id="a",
+        protocol_version="2026-07-28",
+        server_advertised_toa=False,
+        pinned_key_fingerprint="sha256:" + ("ab" * 32),
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    bare = classify_absence(negotiation=rec, attestation_present=True, document=doc)
+    assert bare["class"] != ABSENCE_POSITIVE
+    ok = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        public_key_available=True,
+        key_matches_pin=True,
+        verify_reason="ok",
+    )
+    assert ok["class"] == ABSENCE_POSITIVE
+    assert ok["reason"] == "unexpected_positive_from_non_toa"

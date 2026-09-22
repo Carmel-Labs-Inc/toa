@@ -176,6 +176,13 @@ Ledger policy may still accept when no revoke time is known.
 Observer-signed NegotiationRecord is SHOULD when the record is audit
 evidence; server MUST NOT sign it. Harness T19 PASS.
 
+**Trust-input invariant + JCS (2026-09-22):**
+`classify_absence` never returns `positive_evidence` unless every trust
+input the record depends on was explicitly asserted. No new class.
+Canonicalization is RFC 8785 JCS in Python and JS. `observed_at` MUST
+carry a timezone offset. Integers outside the IEEE 754 safe range fail
+closed. Harness T20–T21 PASS.
+
 **Rationale:** Without these, silence after an incident is ambiguous and incentives
 favor stopping attestation when things break. Feedback on
 modelcontextprotocol/modelcontextprotocol#3350.

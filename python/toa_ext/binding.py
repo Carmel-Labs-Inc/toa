@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, MutableMapping, Optional, Sequence, Union
 
-from toa_verify.verify import KeyMaterial, verify_document
+from toa_verify.verify import KeyMaterial, parse_observed_at, verify_document
 
 EXTENSION_ID = "dev.agentstatus/toa"
 TOA_SPEC = "toa/0.1"
@@ -79,18 +79,7 @@ def _ok(**extra: Any) -> Dict[str, Any]:
 
 
 def _parse_observed_at(value: Any) -> Optional[datetime]:
-    if not isinstance(value, str) or not value:
-        return None
-    s = value.strip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    return parse_observed_at(value)
 
 
 def _validate_binding_shape(binding: Mapping[str, Any]) -> Optional[Dict[str, Any]]:

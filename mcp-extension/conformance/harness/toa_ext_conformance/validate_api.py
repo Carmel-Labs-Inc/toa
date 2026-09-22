@@ -49,15 +49,23 @@ def _layer_satisfies(actual: Optional[str], required: str) -> bool:
 
 
 def _parse_observed_at(value: Any) -> Optional[datetime]:
+    try:
+        from toa_verify.verify import parse_observed_at
+
+        return parse_observed_at(value)
+    except ImportError:
+        pass
     if not isinstance(value, str) or not value:
         return None
-    text = value.replace("Z", "+00:00")
+    if not (value.endswith("Z") or value.endswith("z") or "+" in value[10:] or value[-6:-5] == "-"):
+        return None
+    text = value.replace("Z", "+00:00").replace("z", "+00:00")
     try:
         dt = datetime.fromisoformat(text)
     except ValueError:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        return None
     return dt.astimezone(timezone.utc)
 
 

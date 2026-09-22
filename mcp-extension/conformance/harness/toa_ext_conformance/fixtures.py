@@ -98,6 +98,7 @@ def fixture_status() -> Dict[str, Any]:
         "wrong_tool.json",
         "server_role.json",
         "bad_signature.json",
+        "unicode_float.json",
     ]
     present_docs = [n for n in expected_docs if document_path(n).is_file()]
     key_file = key_path().is_file()

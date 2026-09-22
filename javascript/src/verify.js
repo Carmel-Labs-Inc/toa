@@ -8,6 +8,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CanonicalizeError, canonicalJson } from "./jcs.js";
 
 export const TOA_SPEC = "toa/0.1";
 export const DEFAULT_ALG = "Ed25519";
@@ -29,24 +30,11 @@ export const SIGNED_KEYS = [
   "args_hash",
 ];
 
-export function canonicalJson(payload) {
-  return Buffer.from(JSON.stringify(payload, Object.keys(payload).sort()), "utf8");
-}
+export { canonicalJson } from "./jcs.js";
 
-/** Stable canonical JSON: sort keys recursively via replacer pattern. */
+/** @deprecated alias of RFC 8785 JCS */
 export function canonicalJsonSorted(value) {
-  return Buffer.from(_stableStringify(value), "utf8");
-}
-
-function _stableStringify(value) {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => _stableStringify(v)).join(",")}]`;
-  }
-  const keys = Object.keys(value).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${_stableStringify(value[k])}`).join(",")}}`;
+  return canonicalJson(value);
 }
 
 export function claimForSigning(document) {
@@ -68,7 +56,7 @@ export function resolveAlg(document) {
 
 export function argsHashFor(argumentsObj) {
   const digest = createHash("sha256")
-    .update(canonicalJsonSorted(argumentsObj || {}))
+    .update(canonicalJson(argumentsObj || {}))
     .digest("hex");
   return `sha256:${digest}`;
 }
@@ -126,9 +114,12 @@ export function parseMaxAgeSeconds(value) {
   return n * mult;
 }
 
+const OBSERVED_AT_OFFSET_RE = /(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)$/i;
+
 export function parseObservedAt(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   const s = value.trim();
+  if (!OBSERVED_AT_OFFSET_RE.test(s)) return null;
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return null;
   return d;
@@ -202,18 +193,25 @@ export function verifyDocument(document, opts = {}) {
     type: "spki",
   });
 
-  const message = canonicalJsonSorted(body);
+  let message;
+  try {
+    message = canonicalJson(body);
+  } catch (err) {
+    const reason = err instanceof CanonicalizeError ? err.code : `verify_error:${err.message}`;
+    return { valid: false, reason, claim: body };
+  }
   const sig = Buffer.from(document.signature, "base64");
   const ok = verify(null, message, keyObject, sig);
   if (!ok) {
     return { valid: false, reason: "invalid_signature", claim: body };
   }
 
+  const observed = parseObservedAt(body.observed_at);
+  if (!observed) {
+    return { valid: false, reason: "observed_at_missing_offset", claim: body };
+  }
+
   if (opts.maxAgeSeconds != null) {
-    const observed = parseObservedAt(body.observed_at);
-    if (!observed) {
-      return { valid: false, reason: "missing_or_invalid_observed_at", claim: body };
-    }
     const ref = opts.now instanceof Date ? opts.now : new Date();
     const age = (ref.getTime() - observed.getTime()) / 1000;
     if (age < 0) {

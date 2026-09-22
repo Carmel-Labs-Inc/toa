@@ -1,4 +1,4 @@
-"""T1–T19 scenario implementations (in-process fake MCP)."""
+"""T1–T21 scenario implementations (in-process fake MCP)."""
 
 from __future__ import annotations
 
@@ -1144,6 +1144,187 @@ def scenario_t19_revocation_source_required_for_gate() -> ScenarioResult:
     )
 
 
+def scenario_t20_trust_inputs_must_be_asserted() -> ScenarioResult:
+    """T20 — unknown trust inputs on a strict record are never positive_evidence."""
+    sid, name = "T20", "toa-trust-inputs-must-be-asserted"
+    from toa_ext.negotiation import (
+        ABSENCE_KEY_UNAVAILABLE,
+        ABSENCE_POSITIVE,
+        ABSENCE_REVOCATION_UNAVAILABLE,
+        ABSENCE_UNTRUSTED_KEY,
+        REVOCATION_INVALID_IF_REVOKED_NOW,
+        classify_absence,
+        evaluate_revocation,
+        negotiation_from_initialize,
+    )
+
+    rec = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-strict",
+        client_settings={"require": True},
+        pinned_key_fingerprint="sha256:" + ("ab" * 32),
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    clean = evaluate_revocation(
+        observed_at="2026-01-01T00:00:00Z",
+        negotiation=rec,
+        revocation_checked=True,
+    )
+    bare = classify_absence(negotiation=rec, attestation_present=True, document=doc)
+    if bare.get("class") == ABSENCE_POSITIVE:
+        return _fail(sid, name, "defaults_were_positive", detail=str(bare))
+
+    unknowns = [
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            key_matches_pin=True,
+            verify_reason="ok",
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            verify_reason="ok",
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            key_matches_pin=True,
+            revocation_result=clean,
+        ),
+        classify_absence(
+            negotiation=rec,
+            attestation_present=True,
+            document=doc,
+            public_key_available=True,
+            key_matches_pin=True,
+            verify_reason="ok",
+        ),
+    ]
+    if any(item.get("class") == ABSENCE_POSITIVE for item in unknowns):
+        return _fail(sid, name, "unknown_trust_input_was_positive", detail=str(unknowns))
+    expected = (
+        ABSENCE_KEY_UNAVAILABLE,
+        ABSENCE_UNTRUSTED_KEY,
+        ABSENCE_UNTRUSTED_KEY,
+        ABSENCE_REVOCATION_UNAVAILABLE,
+    )
+    got = tuple(item.get("class") for item in unknowns)
+    if got != expected:
+        return _fail(sid, name, "unknown_trust_class_mismatch", detail=str(unknowns))
+
+    asserted = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        public_key_available=True,
+        key_matches_pin=True,
+        verify_reason="ok",
+        revocation_result=clean,
+    )
+    if asserted.get("class") != ABSENCE_POSITIVE:
+        return _fail(sid, name, "asserted_trust_should_be_positive", detail=str(asserted))
+    return _pass(
+        sid,
+        name,
+        checks={"defaults": "PASS", "unknowns": "PASS", "asserted": ABSENCE_POSITIVE},
+    )
+
+
+def scenario_t21_jcs_and_observed_at_offset() -> ScenarioResult:
+    """T21 — Python and JS JCS agree; naive observed_at fails closed."""
+    sid, name = "T21", "toa-jcs-and-observed-at-offset"
+    import json
+    import subprocess
+    from pathlib import Path
+
+    from toa_verify import args_hash_for, verify_document
+    from toa_verify.jcs import CanonicalizeError, canonicalize_to_string
+    from toa_verify.verify import parse_observed_at
+
+    root = Path(__file__).resolve().parents[4]
+    pub = root / "mcp-extension" / "conformance" / "fixtures" / "keys" / "toa-conformance-test-v1.json"
+    if not pub.is_file():
+        return _skip(sid, name, "missing_keys")
+
+    payload = {"q": "café", "n": 1.0, "msg": "latency ≥ 200 ms — 😀"}
+    fixture_args = {"q": "café", "n": 1.0}
+    py_jcs = canonicalize_to_string(payload)
+    if '"n":1' not in py_jcs or "\\u" in py_jcs:
+        return _fail(sid, name, "python_jcs_escaped_or_kept_float", detail=py_jcs)
+    try:
+        script = (
+            "import { canonicalizeToString } from './javascript/src/jcs.js';"
+            f"console.log(canonicalizeToString({json.dumps(payload, ensure_ascii=False)}));"
+        )
+        proc = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return _skip(sid, name, "node_jcs_unavailable", detail=proc.stderr[:200])
+        if proc.stdout.strip() != py_jcs:
+            return _fail(sid, name, "python_js_jcs_mismatch", detail=f"{py_jcs!r} vs {proc.stdout.strip()!r}")
+    except FileNotFoundError:
+        return _skip(sid, name, "node_not_installed")
+
+    try:
+        canonicalize_to_string({"n": 9007199254740993})
+        return _fail(sid, name, "unsafe_integer_accepted")
+    except CanonicalizeError:
+        pass
+
+    if parse_observed_at("2026-09-20T22:45:12") is not None:
+        return _fail(sid, name, "naive_observed_at_accepted")
+
+    fixture = root / "mcp-extension" / "conformance" / "fixtures" / "unicode_float.json"
+    if not fixture.is_file():
+        return _fail(sid, name, "missing_unicode_float_fixture")
+    doc = json.loads(fixture.read_text(encoding="utf-8"))
+    if any(token not in json.dumps(doc, ensure_ascii=False) for token in ("café", "≥", "😀")):
+        return _fail(sid, name, "fixture_lost_unicode")
+    if '"score": 1.0' not in fixture.read_text(encoding="utf-8"):
+        return _fail(sid, name, "fixture_missing_float_literal")
+    if doc.get("args_hash") != args_hash_for(fixture_args):
+        return _fail(sid, name, "fixture_args_hash_mismatch", detail=str(doc.get("args_hash")))
+    ok = verify_document(doc, public_key=pub, require_emitter=CONFORMANCE_EMITTER_NAME)
+    if not ok.get("valid"):
+        return _fail(sid, name, "signed_unicode_float_failed_python", detail=str(ok))
+
+    js_verify = subprocess.run(
+        [
+            "node",
+            str(root / "javascript" / "src" / "cli.js"),
+            str(fixture),
+            "--public-key",
+            str(pub),
+            "--require-emitter",
+            CONFORMANCE_EMITTER_NAME,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if js_verify.returncode != 0:
+        return _fail(sid, name, "signed_unicode_float_failed_js", detail=js_verify.stdout or js_verify.stderr)
+
+    return _pass(sid, name, checks={"jcs": "PASS", "offset": "PASS", "fixture": "PASS"})
+
+
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T1", "toa-capability-advertisement", scenario_t1_advertisement),
     ("T2", "toa-attach-on-require", scenario_t2_attach_on_require),
@@ -1164,4 +1345,6 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T17", "toa-inconsistent-disposition-layers", scenario_t17_inconsistent_disposition_layers),
     ("T18", "toa-explicit-revocation-policy", scenario_t18_explicit_revocation_policy),
     ("T19", "toa-revocation-status-unavailable", scenario_t19_revocation_source_required_for_gate),
+    ("T20", "toa-trust-inputs-must-be-asserted", scenario_t20_trust_inputs_must_be_asserted),
+    ("T21", "toa-jcs-and-observed-at-offset", scenario_t21_jcs_and_observed_at_offset),
 ]

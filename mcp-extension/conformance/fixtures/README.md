@@ -11,6 +11,7 @@ Ed25519 keypair under [`keys/`](./keys/).
 | `wrong_tool.json` | Tool correlation: `tool.name=other_tool` |
 | `server_role.json` | T4: same grades as pass; use with binding `emitter_role: server` |
 | `bad_signature.json` | T5: valid claim, flipped signature byte |
+| `unicode_float.json` | T21: non-ASCII `reasons` (`≥`, `café`, emoji), `layers.score` `1.0`, `args_hash` of `{q:"café",n:1.0}` |
 
 ## Keys
 

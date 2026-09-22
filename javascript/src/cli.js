@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { rawJsonHasUnsafeIntegerLiteral } from "./jcs.js";
 import { parseMaxAgeSeconds, verifyDocument } from "./verify.js";
 
 function usage() {
@@ -27,7 +28,12 @@ for (let i = 1; i < args.length; i++) {
   } else usage();
 }
 
-const doc = JSON.parse(readFileSync(path, "utf8"));
+const raw = readFileSync(path, "utf8");
+if (rawJsonHasUnsafeIntegerLiteral(raw)) {
+  console.log(JSON.stringify({ valid: false, reason: "unsafe_json_integer" }, null, 2));
+  process.exit(1);
+}
+const doc = JSON.parse(raw);
 const result = verifyDocument(doc, opts);
 if (!result.valid) {
   console.log(JSON.stringify(result, null, 2));

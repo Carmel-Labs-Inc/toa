@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Mapping, Union
 
-from .verify import DEFAULT_ALG, claim_for_signing, canonical_json
+from .verify import DEFAULT_ALG, claim_for_signing, canonical_json, parse_observed_at
 
 PrivateKeyMaterial = Union[str, bytes, Mapping[str, Any], Path]
 
@@ -77,6 +77,9 @@ def sign_document(
     for required in ("spec", "toa_id", "tool", "run", "observed_at", "layers", "emitter"):
         if required not in body:
             raise ValueError(f"missing signed field: {required}")
+
+    if parse_observed_at(body.get("observed_at")) is None:
+        raise ValueError("observed_at_missing_offset")
 
     priv = Ed25519PrivateKey.from_private_bytes(_load_private_key_bytes(private_key))
     sig = base64.b64encode(priv.sign(canonical_json(body))).decode("ascii")

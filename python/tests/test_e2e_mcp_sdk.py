@@ -138,6 +138,8 @@ async def test_e2e_record_negotiation_pins_from_client():
             document=doc,
             attach_expected=True,
             public_key_available=True,
+            key_matches_pin=True,
+            verify_reason="ok",
         )
         assert classified["class"] == ABSENCE_POSITIVE
 
