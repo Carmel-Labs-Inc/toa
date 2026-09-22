@@ -407,6 +407,8 @@ Given a NegotiationRecord and a set of attestations for the same `server_id` / t
 
 Verifiers MUST treat “attestation gap”, “server never advertised TOA”, `key_unavailable`, `untrusted_key`, `inconsistent_claims`, and `revocation_status_unavailable` as different outcome classes.
 
+Positive evidence requires explicit establishment of every trust predicate required by the governing NegotiationRecord. An omitted verifier result, including an omitted key-availability result, pin comparison, signature-verification result, or required revocation result, is unknown and MUST NOT be treated as success. Implementations MAY expose a distinct `trust_not_established` class for this state.
+
 ---
 
 ## 14. Signed negative outcomes

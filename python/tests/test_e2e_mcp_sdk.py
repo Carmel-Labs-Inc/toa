@@ -138,6 +138,7 @@ async def test_e2e_record_negotiation_pins_from_client():
             document=doc,
             attach_expected=True,
             public_key_available=True,
+            signature_verified=True,
         )
         assert classified["class"] == ABSENCE_POSITIVE
 
@@ -291,6 +292,7 @@ async def test_e2e_attach_signed_negative_on_is_error():
             document=doc,
             attach_expected=True,
             public_key_available=True,
+            signature_verified=True,
         )
         assert neg_class["class"] == ABSENCE_NEGATIVE
 

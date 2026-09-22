@@ -29,6 +29,7 @@ ABSENCE_KEY_UNAVAILABLE = "key_unavailable"
 ABSENCE_UNTRUSTED_KEY = "untrusted_key"
 ABSENCE_INCONSISTENT = "inconsistent_claims"
 ABSENCE_REVOCATION_UNAVAILABLE = "revocation_status_unavailable"
+ABSENCE_TRUST_UNKNOWN = "trust_not_established"
 
 # Both policies are defined. Neither is inherited when the field is absent.
 REVOCATION_VALID_AT_OBSERVED = "valid_at_observed_at"
@@ -372,14 +373,73 @@ def pin_matches_document(
     return True
 
 
+def _positive_trust_failure(
+    negotiation: Mapping[str, Any],
+    *,
+    public_key_available: Optional[bool],
+    key_matches_pin: Optional[bool],
+    signature_verified: Optional[bool],
+    verify_reason: Optional[str],
+    revocation_result: Optional[Mapping[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Return a fail-closed class when positive trust is not established."""
+    if public_key_available is None:
+        return {
+            "class": ABSENCE_TRUST_UNKNOWN,
+            "reason": "public_key_availability_not_established",
+        }
+    if not public_key_available:
+        return {
+            "class": ABSENCE_KEY_UNAVAILABLE,
+            "reason": "attestation_present_but_no_trusted_key",
+        }
+    if key_matches_pin is False:
+        return {
+            "class": ABSENCE_UNTRUSTED_KEY,
+            "reason": "document_key_does_not_match_negotiation_pin",
+        }
+    has_pin = any(
+        negotiation.get(field) is not None
+        for field in ("pinned_public_key_id", "pinned_key_fingerprint", "pinned_emitter_name")
+    )
+    if has_pin and key_matches_pin is None:
+        return {
+            "class": ABSENCE_TRUST_UNKNOWN,
+            "reason": "key_pin_comparison_not_established",
+        }
+    if verify_reason == "no_public_key_configured":
+        return {"class": ABSENCE_KEY_UNAVAILABLE, "reason": verify_reason}
+    if verify_reason in {"invalid_signature"} or (
+        isinstance(verify_reason, str) and verify_reason.startswith("unsupported_algorithm")
+    ):
+        return {"class": ABSENCE_UNTRUSTED_KEY, "reason": str(verify_reason)}
+    if signature_verified is False:
+        return {"class": ABSENCE_UNTRUSTED_KEY, "reason": "signature_not_verified"}
+    if signature_verified is None and verify_reason is None:
+        return {
+            "class": ABSENCE_TRUST_UNKNOWN,
+            "reason": "signature_verification_not_established",
+        }
+    if (
+        revocation_policy_from_record(negotiation) == REVOCATION_INVALID_IF_REVOKED_NOW
+        and revocation_result is None
+    ):
+        return {
+            "class": ABSENCE_REVOCATION_UNAVAILABLE,
+            "reason": ABSENCE_REVOCATION_UNAVAILABLE,
+        }
+    return None
+
+
 def classify_absence(
     *,
     negotiation: Mapping[str, Any],
     attestation_present: bool,
     document: Optional[Mapping[str, Any]] = None,
     attach_expected: bool = True,
-    public_key_available: bool = True,
+    public_key_available: Optional[bool] = None,
     key_matches_pin: Optional[bool] = None,
+    signature_verified: Optional[bool] = None,
     verify_reason: Optional[str] = None,
     revocation_result: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -390,10 +450,11 @@ def classify_absence(
     ``outside_toa``, ``attestation_gap``, ``positive_evidence``,
     ``negative_evidence``, ``no_attestation_optional``,
     ``key_unavailable``, ``untrusted_key``, ``inconsistent_claims``,
-    ``revocation_status_unavailable``.
+    ``revocation_status_unavailable``, and ``trust_not_established``.
 
     ``key_unavailable`` / ``untrusted_key`` / ``revocation_status_unavailable``
-    MUST NOT be collapsed into ``attestation_gap``. ``disposition=delivered``
+    MUST NOT be collapsed into ``attestation_gap``. Unknown trust predicates
+    MUST NOT permit ``positive_evidence``. ``disposition=delivered``
     plus a failing core layer is ``inconsistent_claims``, not
     ``positive_evidence``. Revocation is not inferred from the record alone;
     pass ``revocation_result`` from ``evaluate_revocation`` or
@@ -418,6 +479,16 @@ def classify_absence(
                 }
             if document_is_negative_evidence(document):
                 return {"class": ABSENCE_NEGATIVE, "reason": "unexpected_negative_from_non_toa"}
+            trust_failure = _positive_trust_failure(
+                negotiation,
+                public_key_available=public_key_available,
+                key_matches_pin=key_matches_pin,
+                signature_verified=signature_verified,
+                verify_reason=verify_reason,
+                revocation_result=revocation_result,
+            )
+            if trust_failure is not None:
+                return trust_failure
             return {"class": ABSENCE_POSITIVE, "reason": "unexpected_positive_from_non_toa"}
         return {"class": ABSENCE_OUTSIDE_TOA, "reason": "server_never_advertised_toa"}
 
@@ -439,7 +510,7 @@ def classify_absence(
         }
 
     # Key / trust failures: distinct from attestation_gap.
-    if not public_key_available:
+    if public_key_available is not None and not public_key_available:
         return {
             "class": ABSENCE_KEY_UNAVAILABLE,
             "reason": "attestation_present_but_no_trusted_key",
@@ -480,6 +551,16 @@ def classify_absence(
         }
     if document_is_negative_evidence(document):
         return {"class": ABSENCE_NEGATIVE, "reason": "signed_negative_outcome"}
+    trust_failure = _positive_trust_failure(
+        negotiation,
+        public_key_available=public_key_available,
+        key_matches_pin=key_matches_pin,
+        signature_verified=signature_verified,
+        verify_reason=verify_reason,
+        revocation_result=revocation_result,
+    )
+    if trust_failure is not None:
+        return trust_failure
     return {"class": ABSENCE_POSITIVE, "reason": "signed_positive_outcome"}
 
 

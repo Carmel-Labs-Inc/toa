@@ -1,6 +1,6 @@
 # TOA MCP extension conformance harness
 
-In-process reference harness for `dev.agentstatus/toa` scenarios **T1–T10**
+In-process reference harness for `dev.agentstatus/toa` scenarios **T1–T20**
 (see [`../SCENARIOS.md`](../SCENARIOS.md)).
 
 No network MCP servers. A fake client/server pair advertises capabilities and
@@ -58,7 +58,7 @@ PYTHONPATH=.:../../../python python -m toa_ext_conformance
 
 | Scenario | Status |
 |---|---|
-| T1–T10 | PASS |
+| T1–T20 | PASS |
 
 Without fixtures/keys: T1, T3, T9 PASS; T2, T4–T8, T10 SKIP.
 

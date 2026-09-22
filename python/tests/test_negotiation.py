@@ -12,6 +12,7 @@ from toa_ext.negotiation import (
     ABSENCE_OUTSIDE_TOA,
     ABSENCE_POSITIVE,
     ABSENCE_REVOCATION_UNAVAILABLE,
+    ABSENCE_TRUST_UNKNOWN,
     ABSENCE_UNTRUSTED_KEY,
     NEGOTIATION_SPEC,
     REVOCATION_INVALID_IF_REVOKED_NOW,
@@ -100,12 +101,16 @@ def test_classify_positive_and_negative():
         attestation_present=True,
         document={"disposition": "delivered", "layers": {"functional": "pass"}},
         attach_expected=True,
+        public_key_available=True,
+        signature_verified=True,
     )
     neg = classify_absence(
         negotiation=yes,
         attestation_present=True,
         document={"disposition": "failed", "layers": {"functional": "fail"}},
         attach_expected=True,
+        public_key_available=True,
+        signature_verified=True,
     )
     assert pos["class"] == ABSENCE_POSITIVE
     assert neg["class"] == ABSENCE_NEGATIVE
@@ -279,6 +284,8 @@ def test_gate_without_revocation_source_is_unavailable_not_accept():
         attestation_present=True,
         document={"disposition": "delivered", "layers": {"functional": "pass"}},
         revocation_result=gate,
+        public_key_available=True,
+        signature_verified=True,
     )
     gap = classify_absence(negotiation=rec, attestation_present=False, attach_expected=True)
     untrusted = classify_absence(
@@ -291,3 +298,79 @@ def test_gate_without_revocation_source_is_unavailable_not_accept():
     assert classified["class"] != gap["class"]
     assert classified["class"] != untrusted["class"]
     assert classified["class"] != ABSENCE_POSITIVE
+
+
+def test_positive_requires_explicit_trust_predicates():
+    """Unknown required trust state must never collapse into positive evidence."""
+    rec = build_negotiation_record(
+        server_id="strict",
+        protocol_version="2026-07-28",
+        server_advertised_toa=True,
+        client_settings={"require": True},
+        pinned_key_fingerprint="sha256:" + "a" * 64,
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    base = dict(negotiation=rec, attestation_present=True, document=doc)
+
+    cases = [
+        {},
+        {"public_key_available": True, "signature_verified": True,
+         "revocation_result": {"acceptable": True, "reason": "key_not_revoked"}},
+        {"public_key_available": True, "key_matches_pin": True,
+         "signature_verified": True},
+        {"public_key_available": True, "key_matches_pin": True,
+         "revocation_result": {"acceptable": True, "reason": "key_not_revoked"}},
+        {"public_key_available": None, "key_matches_pin": True,
+         "signature_verified": True,
+         "revocation_result": {"acceptable": True, "reason": "key_not_revoked"}},
+        {"public_key_available": True, "key_matches_pin": True,
+         "signature_verified": None,
+         "revocation_result": {"acceptable": True, "reason": "key_not_revoked"}},
+    ]
+    for omitted in cases:
+        result = classify_absence(**base, **omitted)
+        assert result["class"] != ABSENCE_POSITIVE, (omitted, result)
+
+    complete = classify_absence(
+        **base,
+        public_key_available=True,
+        key_matches_pin=True,
+        signature_verified=True,
+        revocation_result={"acceptable": True, "reason": "key_not_revoked"},
+    )
+    assert complete["class"] == ABSENCE_POSITIVE
+
+
+def test_unpinned_positive_still_requires_signature_and_key_state():
+    rec = build_negotiation_record(
+        server_id="unpinned", protocol_version="2026-07-28", server_advertised_toa=True
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    unknown = classify_absence(
+        negotiation=rec, attestation_present=True, document=doc,
+        public_key_available=True,
+    )
+    assert unknown["class"] == ABSENCE_TRUST_UNKNOWN
+    verified = classify_absence(
+        negotiation=rec, attestation_present=True, document=doc,
+        public_key_available=True, signature_verified=True,
+    )
+    assert verified["class"] == ABSENCE_POSITIVE
+
+
+def test_non_advertised_positive_also_requires_explicit_trust():
+    rec = build_negotiation_record(
+        server_id="outside", protocol_version="2026-07-28", server_advertised_toa=False
+    )
+    doc = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    unknown = classify_absence(negotiation=rec, attestation_present=True, document=doc)
+    assert unknown["class"] == ABSENCE_TRUST_UNKNOWN
+    verified = classify_absence(
+        negotiation=rec,
+        attestation_present=True,
+        document=doc,
+        public_key_available=True,
+        signature_verified=True,
+    )
+    assert verified["class"] == ABSENCE_POSITIVE
