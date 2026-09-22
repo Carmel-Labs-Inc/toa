@@ -1,4 +1,4 @@
-"""T1–T19 scenario implementations (in-process fake MCP)."""
+"""T1–T20 scenario implementations (in-process fake MCP)."""
 
 from __future__ import annotations
 
@@ -1144,6 +1144,93 @@ def scenario_t19_revocation_source_required_for_gate() -> ScenarioResult:
     )
 
 
+def scenario_t20_unknown_trust_state_fails_closed() -> ScenarioResult:
+    """T20 — required unknown trust state cannot become positive evidence."""
+    sid, name = "T20", "toa-unknown-trust-state-fails-closed"
+    from toa_ext.negotiation import (
+        ABSENCE_POSITIVE,
+        ABSENCE_REVOCATION_UNAVAILABLE,
+        ABSENCE_TRUST_UNKNOWN,
+        REVOCATION_INVALID_IF_REVOKED_NOW,
+        classify_absence,
+        negotiation_from_initialize,
+    )
+
+    record = negotiation_from_initialize(
+        {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {"extensions": {EXTENSION_ID: {"attach": "on_require"}}},
+        },
+        server_id="srv-unknown-trust",
+        client_settings={"require": True},
+        pinned_key_fingerprint="sha256:" + "a" * 64,
+        revocation_policy=REVOCATION_INVALID_IF_REVOKED_NOW,
+    )
+    document = {"disposition": "delivered", "layers": {"functional": "pass"}}
+    clean_revocation = {"acceptable": True, "reason": "key_not_revoked"}
+
+    pin_unknown = classify_absence(
+        negotiation=record,
+        attestation_present=True,
+        document=document,
+        public_key_available=True,
+        signature_verified=True,
+        revocation_result=clean_revocation,
+    )
+    if pin_unknown.get("class") != ABSENCE_TRUST_UNKNOWN:
+        return _fail(sid, name, "pin_unknown_must_fail_closed", detail=str(pin_unknown))
+
+    signature_unknown = classify_absence(
+        negotiation=record,
+        attestation_present=True,
+        document=document,
+        public_key_available=True,
+        key_matches_pin=True,
+        revocation_result=clean_revocation,
+    )
+    if signature_unknown.get("class") != ABSENCE_TRUST_UNKNOWN:
+        return _fail(sid, name, "signature_unknown_must_fail_closed", detail=str(signature_unknown))
+
+    revocation_unknown = classify_absence(
+        negotiation=record,
+        attestation_present=True,
+        document=document,
+        public_key_available=True,
+        key_matches_pin=True,
+        signature_verified=True,
+    )
+    if revocation_unknown.get("class") != ABSENCE_REVOCATION_UNAVAILABLE:
+        return _fail(
+            sid,
+            name,
+            "revocation_unknown_must_fail_closed",
+            detail=str(revocation_unknown),
+        )
+
+    complete = classify_absence(
+        negotiation=record,
+        attestation_present=True,
+        document=document,
+        public_key_available=True,
+        key_matches_pin=True,
+        signature_verified=True,
+        revocation_result=clean_revocation,
+    )
+    if complete.get("class") != ABSENCE_POSITIVE:
+        return _fail(sid, name, "complete_trust_must_remain_positive", detail=str(complete))
+
+    return _pass(
+        sid,
+        name,
+        checks={
+            "pin_unknown": "PASS",
+            "signature_unknown": "PASS",
+            "revocation_unknown": "PASS",
+            "complete_trust": "PASS",
+        },
+    )
+
+
 SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T1", "toa-capability-advertisement", scenario_t1_advertisement),
     ("T2", "toa-attach-on-require", scenario_t2_attach_on_require),
@@ -1164,4 +1251,5 @@ SCENARIOS: List[tuple[str, str, Callable[[], ScenarioResult]]] = [
     ("T17", "toa-inconsistent-disposition-layers", scenario_t17_inconsistent_disposition_layers),
     ("T18", "toa-explicit-revocation-policy", scenario_t18_explicit_revocation_policy),
     ("T19", "toa-revocation-status-unavailable", scenario_t19_revocation_source_required_for_gate),
+    ("T20", "toa-unknown-trust-state-fails-closed", scenario_t20_unknown_trust_state_fails_closed),
 ]

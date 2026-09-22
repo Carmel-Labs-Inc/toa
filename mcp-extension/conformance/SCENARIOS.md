@@ -204,6 +204,7 @@ Fixtures: [`fixtures/`](./fixtures/).
 | T17 inconsistent disposition/layers | harness PASS |
 | T18 explicit revocation policy | harness PASS |
 | T19 revocation status unavailable | harness PASS |
+| T20 unknown trust state fail-closed | harness PASS |
 
 ---
 
@@ -313,3 +314,18 @@ Fixtures: [`fixtures/`](./fixtures/).
 2. Gate policy + `revocation_checked=true` + no revoke timestamp → accept (`key_not_revoked`)
 3. Ledger policy + no source → MAY accept
 4. Offline class `revocation_status_unavailable` ≠ `attestation_gap` ≠ `untrusted_key` ≠ `positive_evidence`
+
+---
+
+## T20 — `toa-unknown-trust-state-fails-closed`
+
+**Intent:** Required unknown trust state must not collapse into `positive_evidence`.
+
+**Setup:** Advertised TOA; client `require: true`; pinned key fingerprint; `revocation_policy=invalid_if_revoked_now`; delivered positive document.
+
+**Checks:**
+
+1. Unknown pin comparison → `trust_not_established`
+2. Unknown signature verification → `trust_not_established`
+3. Missing strict revocation result → `revocation_status_unavailable`
+4. Explicit key availability, pin match, signature verification, and clean revocation result → `positive_evidence`
